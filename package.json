@@ -1,0 +1,13 @@
+{
+  "name": "paseo-plugins",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Monorepo of Paseo plugins.",
+  "workspaces": [
+    "capitally-tasks",
+    "vscode-open-remote"
+  ],
+  "scripts": {
+    "typecheck": "npm run typecheck --workspaces"
+  }
+}
