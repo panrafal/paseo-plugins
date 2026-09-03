@@ -5,7 +5,8 @@
   "description": "Monorepo of Paseo plugins.",
   "workspaces": [
     "capitally-tasks",
-    "vscode-open-remote"
+    "vscode-open-remote",
+    "agents-dash-list"
   ],
   "scripts": {
     "typecheck": "npm run typecheck --workspaces"

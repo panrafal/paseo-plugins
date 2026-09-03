@@ -11,6 +11,9 @@ configuration, client entrypoint, and optional server entrypoint.
 
 Current plugins:
 
+- `agents-dash-list`: adds an "Agents dash" sidebar surface that lists workspaces and their agents
+  grouped by status (waiting, unread, in progress, failing, approved, idle, closed), with quick
+  archive and mark-as-unread actions.
 - `capitally-tasks`: adds a composer pill for Capitally task IDs and opens the matching Notion page.
 - `vscode-open-remote`: adds a remote-editor pill, editor settings, desktop URI handling, and tablet
   `vscode.dev` support. It intentionally hides the pill on phones.

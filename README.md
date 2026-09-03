@@ -5,6 +5,7 @@ and is installed independently.
 
 | Plugin | Description |
 | --- | --- |
+| [`agents-dash-list`](./agents-dash-list) | Adds an "Agents dash" sidebar entry that lists workspaces and their agents grouped by status (waiting, unread, in progress, failing, approved, idle, closed), with quick archive and mark-as-unread actions. |
 | [`capitally-tasks`](./capitally-tasks) | Shows a `CT-1234` pill on agents whose branch or task name references a Capitally task, linking to it in Notion. |
 | [`vscode-open-remote`](./vscode-open-remote) | Opens a remote agent's current directory in VS Code, Cursor, a custom editor, or vscode.dev on mobile. |
 
