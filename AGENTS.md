@@ -11,6 +11,8 @@ configuration, client entrypoint, and optional server entrypoint.
 
 Current plugins:
 
+- `agent-heartbeats`: adds a compact heartbeat-count composer pill and an agent-scoped panel for
+  listing, creating, editing, and deleting heartbeats.
 - `agents-dash-list`: adds an "Agents dash" sidebar surface that lists workspaces and their agents
   grouped by status (waiting, unread, in progress, failing, approved, idle, closed), with quick
   archive and mark-as-unread actions.
