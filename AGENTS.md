@@ -15,6 +15,8 @@ Current plugins:
   grouped by status (waiting, unread, in progress, failing, approved, idle, closed), with quick
   archive and mark-as-unread actions.
 - `capitally-tasks`: adds a composer pill for Capitally task IDs and opens the matching Notion page.
+- `chat-resume`: adds pills that schedule a one-shot resume after provider allowance renewal or
+  prepare an editable handover to another ready provider.
 - `vscode-open-remote`: adds a remote-editor pill, editor settings, desktop URI handling, and tablet
   `vscode.dev` support. It intentionally hides the pill on phones.
 

@@ -6,7 +6,8 @@
   "workspaces": [
     "capitally-tasks",
     "vscode-open-remote",
-    "agents-dash-list"
+    "agents-dash-list",
+    "chat-resume"
   ],
   "scripts": {
     "typecheck": "npm run typecheck --workspaces"
