@@ -71,6 +71,10 @@ function RunRowImpl({ run, theme, scheme, nowMs, navigation }: RunRowProps) {
   const openAgent = useCallback(() => {
     if (agentId) navigation?.openAgent({ agentId });
   }, [agentId, navigation]);
+  const pullRequestUrl = run.pullRequest?.url ?? null;
+  const openPullRequest = useCallback(() => {
+    if (pullRequestUrl) void openExternalUrl(pullRequestUrl);
+  }, [pullRequestUrl]);
   const openWorkspace = useCallback(() => {
     if (run.workspace) navigation?.openWorkspace({ workspaceId: run.workspace.id });
   }, [navigation, run.workspace]);
@@ -193,7 +197,7 @@ function RunRowImpl({ run, theme, scheme, nowMs, navigation }: RunRowProps) {
       {expanded ? (
         <View style={styles.body}>
           <RunOutput run={run} transcript={transcript} nowMs={nowMs} theme={theme} />
-          {canOpenAgent || canOpenWorkspace || canLoadTranscript ? (
+          {canOpenAgent || canOpenWorkspace || run.pullRequest || canLoadTranscript ? (
             <View style={styles.actions}>
               {canOpenAgent ? (
                 <ActionButton
@@ -209,6 +213,16 @@ function RunRowImpl({ run, theme, scheme, nowMs, navigation }: RunRowProps) {
                   icon="FolderGit2"
                   label="Open workspace"
                   onPress={openWorkspace}
+                  theme={theme}
+                  styles={styles}
+                />
+              ) : null}
+              {run.pullRequest ? (
+                <ActionButton
+                  icon="GitPullRequest"
+                  label={`Open ${pullRequestLabel(run.pullRequest)}`}
+                  hint={run.pullRequest.title ?? "Opens the pull request in the browser"}
+                  onPress={openPullRequest}
                   theme={theme}
                   styles={styles}
                 />

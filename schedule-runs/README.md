@@ -42,7 +42,8 @@ failed, and how many are running. With filters on, it also says how many are sho
 - **Search** — every word must appear, case-insensitively, in the response, the error, the
   schedule name, the workspace name or branch, or the agent title.
 - **Schedule** — a dropdown listing every schedule with its run count; pick any number. "All"
-  clears the selection.
+  clears the selection. Dropdowns open as a popover under their trigger on desktop and as a
+  sheet on phones.
 - **Status** — a dropdown of running, succeeded, failed with counts; pick any number.
 - **Archived** — a dropdown: all runs, hide runs whose agent or workspace was archived, or only
   those.
@@ -56,6 +57,7 @@ reset when the app restarts. The search text is not kept.
 The workspace name and the pull request on the meta line are links. The rest sit at the bottom
 of an expanded card:
 
+- **Open #123** — opens the pull request in the browser, when one is known.
 - **Open agent** and **Open workspace** — navigate to the target. They work for archived targets
   too: Paseo lands on its recovery screen and offers to unarchive. They disappear only when the
   daemon no longer lists the target at all.

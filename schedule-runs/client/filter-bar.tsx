@@ -133,6 +133,7 @@ export function FilterBar({
           onToggle={(id) => onChange({ ...filters, scheduleIds: toggled(filters.scheduleIds, id) })}
           onClear={() => onChange({ ...filters, scheduleIds: new Set() })}
           theme={theme}
+          compact={compact}
         />
         <Dropdown
           label="Status"
@@ -146,6 +147,7 @@ export function FilterBar({
           }
           onClear={() => onChange({ ...filters, statuses: new Set() })}
           theme={theme}
+          compact={compact}
         />
         <Dropdown
           label="Archived"
@@ -156,6 +158,7 @@ export function FilterBar({
           multi={false}
           onToggle={(id) => onChange({ ...filters, archived: id as ArchivedMode })}
           theme={theme}
+          compact={compact}
         />
         <Chip
           label="Heartbeats"
