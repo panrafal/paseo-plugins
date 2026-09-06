@@ -16,6 +16,10 @@ Current plugins:
 - `agents-dash-list`: adds an "Agents dash" sidebar surface that lists workspaces and their agents
   grouped by status (waiting, unread, in progress, failing, approved, idle, closed), with quick
   archive and mark-as-unread actions.
+- `agents-history`: adds an "Agents history" sidebar surface that lists every workspace and agent,
+  archived ones included, with archived/provider/project/period filters and a search that greps the
+  providers' on-disk conversation transcripts and shows matching lines under each agent. Reads
+  daemon state from disk; changes nothing.
 - `capitally-tasks`: adds a composer pill for Capitally task IDs and opens the matching Notion page.
 - `chat-resume`: adds pills that schedule a one-shot resume after provider allowance renewal or
   prepare an editable handover to another ready provider.

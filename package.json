@@ -9,7 +9,8 @@
     "agents-dash-list",
     "chat-resume",
     "agent-heartbeats",
-    "schedule-runs"
+    "schedule-runs",
+    "agents-history"
   ],
   "scripts": {
     "typecheck": "npm run typecheck --workspaces"

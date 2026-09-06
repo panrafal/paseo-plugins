@@ -7,6 +7,7 @@ and is installed independently.
 | --- | --- |
 | [`agents-dash-list`](./agents-dash-list) | Adds an "Agents dash" sidebar entry that lists workspaces and their agents grouped by status (waiting, unread, in progress, failing, approved, idle, closed), with quick archive and mark-as-unread actions. |
 | [`agent-heartbeats`](./agent-heartbeats) | Adds a compact per-agent heartbeat count and a panel for creating, reviewing, editing, and deleting heartbeats. |
+| [`agents-history`](./agents-history) | Adds an "Agents history" sidebar surface listing every workspace and agent, archived ones included, with filters and a grep search over on-disk conversation transcripts that shows matching lines under each agent. |
 | [`capitally-tasks`](./capitally-tasks) | Shows a `CT-1234` pill on agents whose branch or task name references a Capitally task, linking to it in Notion. |
 | [`chat-resume`](./chat-resume) | Resumes quota-exhausted agents after allowance renewal or prepares a handover to the next ready provider. |
 | [`schedule-runs`](./schedule-runs) | Adds a "Schedule runs" sidebar feed of every schedule run with status, workspace, agent, archived state, and final response, filterable by schedule, status, archived state, and keyword. |
