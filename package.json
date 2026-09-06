@@ -8,7 +8,8 @@
     "vscode-open-remote",
     "agents-dash-list",
     "chat-resume",
-    "agent-heartbeats"
+    "agent-heartbeats",
+    "schedule-runs"
   ],
   "scripts": {
     "typecheck": "npm run typecheck --workspaces"

@@ -19,6 +19,9 @@ Current plugins:
 - `capitally-tasks`: adds a composer pill for Capitally task IDs and opens the matching Notion page.
 - `chat-resume`: adds pills that schedule a one-shot resume after provider allowance renewal or
   prepare an editable handover to another ready provider.
+- `schedule-runs`: adds a "Schedule runs" sidebar surface that lists every run of every schedule
+  with status, workspace, agent, archived state, and final response, filterable by schedule,
+  status, archived state, and keyword. Reads daemon state from disk; makes no schedule changes.
 - `vscode-open-remote`: adds a remote-editor pill, editor settings, desktop URI handling, and tablet
   `vscode.dev` support. It intentionally hides the pill on phones.
 

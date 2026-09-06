@@ -9,6 +9,7 @@ and is installed independently.
 | [`agent-heartbeats`](./agent-heartbeats) | Adds a compact per-agent heartbeat count and a panel for creating, reviewing, editing, and deleting heartbeats. |
 | [`capitally-tasks`](./capitally-tasks) | Shows a `CT-1234` pill on agents whose branch or task name references a Capitally task, linking to it in Notion. |
 | [`chat-resume`](./chat-resume) | Resumes quota-exhausted agents after allowance renewal or prepares a handover to the next ready provider. |
+| [`schedule-runs`](./schedule-runs) | Adds a "Schedule runs" sidebar feed of every schedule run with status, workspace, agent, archived state, and final response, filterable by schedule, status, archived state, and keyword. |
 | [`vscode-open-remote`](./vscode-open-remote) | Opens a remote agent's current directory in VS Code, Cursor, a custom editor, or vscode.dev on mobile. |
 
 ## Development
