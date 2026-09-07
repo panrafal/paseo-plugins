@@ -10,7 +10,8 @@
     "chat-resume",
     "agent-heartbeats",
     "schedule-runs",
-    "agents-history"
+    "agents-history",
+    "session-usage"
   ],
   "scripts": {
     "typecheck": "npm run typecheck --workspaces"

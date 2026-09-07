@@ -1,0 +1,19 @@
+{
+  "name": "session-usage",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Paseo plugin: Claude and Codex session usage, sortable statistics and provider comparison charts.",
+  "scripts": { "typecheck": "tsc --noEmit", "test": "node --import tsx --test --test-isolation=none server/*.test.ts" },
+  "devDependencies": {
+    "@getpaseo/client": "^0.7.1",
+    "@getpaseo/protocol": "^0.7.1",
+    "@tanstack/react-query": "^5.90.11",
+    "@types/node": "^24.0.0",
+    "@types/react": "~19.2.0",
+    "react": "19.1.0",
+    "react-native": "0.81.5",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3",
+    "zod": "^4.4.3"
+  }
+}

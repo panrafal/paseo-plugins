@@ -11,6 +11,7 @@ and is installed independently.
 | [`capitally-tasks`](./capitally-tasks) | Shows a `CT-1234` pill on agents whose branch or task name references a Capitally task, linking to it in Notion. |
 | [`chat-resume`](./chat-resume) | Resumes quota-exhausted agents after allowance renewal or prepares a handover to the next ready provider. |
 | [`schedule-runs`](./schedule-runs) | Adds a "Schedule runs" sidebar feed of every schedule run with status, workspace, agent, archived state, and final response, filterable by schedule, status, archived state, and keyword. |
+| [`session-usage`](./session-usage) | Compares Claude and Codex session usage with a sortable statistics table, provider bar charts, project/date filters, cache accounting, cost estimates, and CSV export. Includes archived sessions and subagents. |
 | [`vscode-open-remote`](./vscode-open-remote) | Opens a remote agent's current directory in VS Code, Cursor, a custom editor, or vscode.dev on mobile. |
 
 ## Development

@@ -26,6 +26,9 @@ Current plugins:
 - `schedule-runs`: adds a "Schedule runs" sidebar surface that lists every run of every schedule
   with status, workspace, agent, archived state, and final response, filterable by schedule,
   status, archived state, and keyword. Reads daemon state from disk; makes no schedule changes.
+- `session-usage`: reads active and archived Claude/Codex transcripts and Paseo metadata, with a
+  sortable statistics table, filtered provider charts, token/cache accounting, cost estimates,
+  session details, and CSV export. Reads local files; changes no provider or daemon state.
 - `vscode-open-remote`: adds a remote-editor pill, editor settings, desktop URI handling, and tablet
   `vscode.dev` support. It intentionally hides the pill on phones.
 
