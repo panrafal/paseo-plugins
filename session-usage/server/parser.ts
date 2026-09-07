@@ -39,7 +39,11 @@ export interface ParsedTranscript {
   buckets: Bucket[];
   warnings: string[];
 }
-interface Contribution { day: string; model: string; metrics: Metrics; tools: Record<string, number> }
+interface Contribution { day: string; model: string; effort: string | null; metrics: Metrics; tools: Record<string, number> }
+function recordedEffort(value: unknown): string | null {
+  const effort = string(value).trim().toLowerCase();
+  return /^[a-z][a-z0-9_-]{0,31}$/.test(effort) ? effort : null;
+}
 const TOKEN_KEYS: MetricKey[] = ["inputTokens", "uncachedTokens", "cacheReadTokens", "cacheWriteTokens", "cacheWrite1hTokens", "outputTokens", "reasoningTokens"];
 const COUNT_KEYS: MetricKey[] = ["userMessages", "assistantMessages", "toolCalls", "toolErrors", "userCharacters", "assistantCharacters", "toolInputCharacters", "toolOutputCharacters", "compactions"];
 
@@ -70,6 +74,7 @@ export function normalizeUsage(provider: "claude" | "codex", usage: RecordValue)
 export class TranscriptParser {
   private result: ParsedTranscript = { nativeId: "", parentId: null, cwd: "", title: "", branch: "", startedAt: null, endedAt: null, buckets: [], warnings: [] };
   private model = "unknown";
+  private effort: string | null = null;
   private day = "unknown";
   private records = new Set<string>();
   private contributions = new Map<string, Contribution>();
@@ -90,7 +95,7 @@ export class TranscriptParser {
   private contribution(id: string): Contribution {
     let entry = this.contributions.get(id);
     if (!entry) {
-      entry = { day: this.day, model: this.model, metrics: emptyMetrics(), tools: Object.create(null) as Record<string, number> };
+      entry = { day: this.day, model: this.model, effort: this.effort, metrics: emptyMetrics(), tools: Object.create(null) as Record<string, number> };
       this.contributions.set(id, entry);
     }
     return entry;
@@ -150,9 +155,11 @@ export class TranscriptParser {
     const model = string(m.model);
     if (model && model !== "<synthetic>") this.model = model;
     if (r.type === "assistant" && model !== "<synthetic>") {
+      this.effort = recordedEffort(r.effort);
       const messageId = string(m.id) || id;
       const usage = normalizeUsage("claude", object(m.usage));
       const entry = this.contribution(`usage:${messageId}`);
+      if (this.effort !== null) entry.effort = this.effort;
       // Claude can emit several blocks carrying the same message's usage, then a final update.
       for (const key of TOKEN_KEYS) if (usage[key] !== null) entry.metrics[key] = Math.max(entry.metrics[key] ?? 0, usage[key]!);
       entry.metrics.requests = usage.inputTokens === null ? null : 1;
@@ -195,7 +202,15 @@ export class TranscriptParser {
       this.result.branch = string(object(p.git).branch);
       this.rememberTime(timestamp(p.timestamp));
     }
-    if (r.type === "turn_context") this.model = string(p.model) || this.model;
+    if (r.type === "turn_context") {
+      this.model = string(p.model) || this.model;
+      this.effort = recordedEffort(p.effort);
+    }
+    if (r.type === "event_msg" && p.type === "thread_settings_applied") {
+      const settings = object(p.thread_settings);
+      this.model = string(settings.model) || this.model;
+      this.effort = recordedEffort(settings.reasoning_effort);
+    }
     if (r.type === "token_usage_record") {
       if (this.result.nativeId && string(p.thread_id) && p.thread_id !== this.result.nativeId) {
         this.warn("Inherited token records from another thread were excluded.");
@@ -284,10 +299,10 @@ export class TranscriptParser {
         continue;
       }
       if (id.startsWith("usage:") || id.startsWith("legacy-usage:")) entry.metrics.estimatedCostUsd = estimateCost(entry.model, entry.metrics);
-      const key = `${entry.day}/${entry.model}`;
+      const key = JSON.stringify([entry.day, entry.model, entry.effort]);
       let bucket = buckets.get(key);
       if (!bucket) {
-        bucket = { day: entry.day, model: entry.model, metrics: emptyMetrics(), tools: Object.create(null) as Record<string, number> };
+        bucket = { day: entry.day, model: entry.model, effort: entry.effort, metrics: emptyMetrics(), tools: Object.create(null) as Record<string, number> };
         // Absence of a recorded event is a known zero only for a readable transcript.
         for (const metric of COUNT_KEYS) bucket.metrics[metric] = 0;
         buckets.set(key, bucket);
@@ -297,7 +312,7 @@ export class TranscriptParser {
     }
     if (!this.validRecords) this.warn("No readable transcript records.");
     if (![...buckets.values()].some((bucket) => bucket.metrics.inputTokens !== null)) this.warn("No token usage records found; token and cost measurements are unknown.");
-    this.result.buckets = [...buckets.values()].sort((a, b) => a.day.localeCompare(b.day) || a.model.localeCompare(b.model));
+    this.result.buckets = [...buckets.values()].sort((a, b) => a.day.localeCompare(b.day) || a.model.localeCompare(b.model) || (a.effort ?? "").localeCompare(b.effort ?? ""));
     this.result.warnings = [...this.warnings];
     return this.result;
   }

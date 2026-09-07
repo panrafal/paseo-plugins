@@ -1,11 +1,13 @@
 import type { PluginTheme } from "@getpaseo/plugin";
 import { useMemo, useState } from "react";
 import { Pressable, Text, View } from "react-native";
-import { aggregate, chartGroups, DISPLAY_METRICS, formatMetric, METRICS, type DisplayMetric, type Grouping, type SessionRow } from "../shared/model";
+import { aggregate, chartGroups, DISPLAY_METRICS, formatMetric, METRICS, type DisplayMetric, type Filters, type Grouping, type SessionRow } from "../shared/model";
+import type { Session } from "../shared/schema";
+import { ActivityCalendar } from "./activity-calendar";
 import { Dropdown } from "./dropdown";
 
 const GROUPS: { id: Grouping; label: string }[] = [{ id: "provider", label: "Provider" }, { id: "day", label: "Day" }, { id: "week", label: "Week (Monday)" }, { id: "month", label: "Month" }, { id: "project", label: "Project" }, { id: "model", label: "Model" }];
-export function Charts({ rows, theme, compact }: { rows: SessionRow[]; theme: PluginTheme; compact: boolean }) {
+export function Charts({ rows, sessions, filters, onFiltersChange, theme, compact }: { rows: SessionRow[]; sessions: Session[]; filters: Filters; onFiltersChange(filters: Filters): void; theme: PluginTheme; compact: boolean }) {
   const [metric, setMetric] = useState<DisplayMetric>("totalTokens");
   const [grouping, setGrouping] = useState<Grouping>("provider");
   const [average, setAverage] = useState(false);
@@ -18,7 +20,7 @@ export function Charts({ rows, theme, compact }: { rows: SessionRow[]; theme: Pl
   const muted = { color: theme.colors.foregroundMuted, fontSize: 12 };
   const temporal = ["day", "week", "month"].includes(grouping);
   const visible = temporal ? values.slice(-limit) : values.slice(0, limit);
-  return <View style={{ borderWidth: 1, borderColor: theme.colors.border, borderRadius: 12, padding: compact ? 12 : 16, gap: 12, backgroundColor: theme.colors.surface1 }}>
+  return <><View style={{ borderWidth: 1, borderColor: theme.colors.border, borderRadius: 12, padding: compact ? 12 : 16, gap: 12, backgroundColor: theme.colors.surface1 }}>
     <Text accessibilityRole="header" style={{ color: theme.colors.foreground, fontSize: 16, fontWeight: "600" }}>Compare providers</Text>
     <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
       <Dropdown label="Metric" summary={METRICS[metric].label} options={DISPLAY_METRICS.map((id) => ({ id, label: METRICS[id].label }))} selected={new Set([metric])} multi={false} onToggle={(id) => setMetric(id as DisplayMetric)} theme={theme} compact={compact} />
@@ -47,5 +49,7 @@ export function Charts({ rows, theme, compact }: { rows: SessionRow[]; theme: Pl
     </View>}
     {!restricted && groups.length > limit ? <Pressable accessibilityRole="button" onPress={() => setLimit(limit + 30)} style={{ minHeight: 36, justifyContent: "center" }}><Text style={{ color: theme.colors.accent, fontSize: 13 }}>Showing {temporal ? "latest " : ""}{visible.length} of {groups.length} groups · Show more</Text></Pressable> : null}
     <Text style={muted}>Bars start at zero on a shared scale. Values are known subtotals; “—” means unknown. Percentages use weighted totals. Dates use UTC.</Text>
-  </View>;
+  </View>
+    <ActivityCalendar sessions={sessions} filters={filters} onChange={onFiltersChange} metric={metric} average={average} theme={theme} compact={compact} />
+  </>;
 }

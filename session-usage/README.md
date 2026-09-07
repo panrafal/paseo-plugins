@@ -6,22 +6,49 @@ outside Paseo, then joins them with Paseo's project, workspace, and agent record
 
 ## Using the surface
 
-- The **sortable table** shows one row per provider session. Choose **Columns** to show any
+- The **sortable table** defaults to one row per provider session. Choose **Columns** to show any
   measurement, press a heading to sort in either direction, and press a session name for all
   measurements, its tool-call breakdown, and a link to its agent or workspace. Missing values
   sort last in both directions. The session column stays fixed while the other columns scroll
   horizontally, on desktop and mobile. The table pages through 40 rows at a time.
+- **Table grouping** independently switches between Sessions, provider, project, workspace,
+  label, model, effort, day, week, and month. It preserves the selected metric columns and does
+  not change Compare providers or the calendar. Group rows show metric totals, weighted
+  percentages, session counts, and coverage for partially known measurements. Click a group
+  for all metrics and its member sessions; session details show that member's activity in the group.
+  Sessions with multiple labels appear once in each label group, so label totals can overlap.
+  Unlabeled sessions get their own group. Date/model/effort groups split recorded activity;
+  session span and transcript size remain unknown there because they cannot be divided across
+  those groups. Other groupings sum those lifetime values once per member within each group.
+  Numeric cell backgrounds scale independently per metric across all filtered table rows,
+  including other pages. Zero and unknown values have no tint.
+- **Effort**, beside Models, shows the recorded levels for the selected activity (for example,
+  `low` or `xhigh`). A session that changed effort lists each level; sorting uses its highest
+  recorded level. Details and CSV include effort too. An em dash means effort was not recorded;
+  provider defaults and current agent settings are not inferred for historical usage.
 - **Compare providers** shows Claude and Codex bars on the same zero-based scale. Choose a
   metric, total or average per known session, and group by provider, day, week, month, project,
   or model. Weeks start on Monday. Large charts initially show 14 groups; **Show more** reveals
   the rest. Time charts initially show the latest groups.
+- **Daily activity**, below the bars, shows a GitHub-style calendar for the last 12 months on
+  desktop or one month on compact/narrow screens. Previous/next controls browse older periods.
+  It uses the bars' selected metric and total/average setting, combining the selected providers.
+  Each day's color is normalized against the highest value across the visible calendar.
+  Selecting a day filters the cards, bars, table, details and CSV to that UTC day; selecting the
+  same day again clears the date filter. The calendar
+  ignores date filters so its days and color scale stay visible; all other filters still apply.
+  **Clear date filter** restores the report's full date range. Empty days remain selectable;
+  future days are disabled. Hover or focus a day to see its value and measurement coverage.
+  Dashed cells mark unknown measurements. Lifetime session span and file size leave the calendar
+  uncolored because those measurements cannot be attributed to individual days.
 - Filters include provider, project, workspace, label, model, active/archived state, source
   (Paseo linked/outside Paseo), main/subagent, data availability, and UTC calendar dates.
-  Search matches session metadata, titles, directories, branches, labels, and models.
-  Filter, column, and sort choices survive navigation per host until the app restarts.
+  Search matches session metadata, titles, directories, branches, labels, models, and effort.
+  Filter, column, table grouping, and sort choices survive navigation per host until the app restarts.
 - **Export CSV** exports every filtered row in the current sort order, with all measurements
   as raw numbers (durations in milliseconds, ratios from 0 to 1, USD, bytes). On native clients
   it uses the platform share sheet. Spreadsheet formulas in text fields are neutralized.
+  When the table is grouped, the export contains grouped totals and per-metric known-session counts.
 - **Refresh** scans for new or changed files. The surface also refreshes every 30 seconds and
   polls scan progress every two seconds. A previous completed snapshot stays visible during
   refresh; data from a different host is never used as a placeholder.
@@ -43,7 +70,7 @@ of output and is never added a second time to total tokens. Character counts use
 points, exclude images, and are not estimates of token counts.
 
 **Dates filter activity, not session creation.** A session spanning several days contributes only
-the daily/model buckets selected. Date presets include today and the preceding 6, 29, or 89 UTC
+the daily/model/effort buckets selected. Date presets include today and the preceding 6, 29, or 89 UTC
 calendar days. Unknown-date buckets appear only without date bounds. Recorded turn duration is
 attributed to the completion day. Session span and transcript size always cover the entire file;
 those two metrics can be charted only by provider or project. Model filters omit activity that
@@ -96,6 +123,8 @@ the SDK's `result.total_cost_usd` events. No pricing or provider account API is 
   is empty; inaccessible or malformed metadata produces a visible scan warning.
 - Claude usage snapshots are merged per assistant message ID, using the highest reported value
   per token category to handle repeated content blocks/final updates. Tool calls use call IDs.
+- Effort comes from Claude assistant records and Codex turn contexts or applied thread settings.
+  Changes split activity buckets without changing token totals. Missing effort stays unknown.
 - Modern Codex `token_usage_record` entries are deduplicated by response ID and are authoritative
   once present. Their lifetime counters differ from legacy `token_count` counters after compaction;
   the two counter streams are never summed. Earlier legacy-only sections use positive cumulative
@@ -137,4 +166,5 @@ and Paseo sheets on compact clients; the statistics table remains horizontally s
 Regression tests cover provider accounting, duplicate events, compaction counters, child metadata,
 malformed/oversized records, active/archive copies, missing files, metadata joins, changed-file
 refresh, credential/content exclusion, date/model filters, weighted aggregation, chart totals,
-sorting, and CSV escaping.
+effort changes and missing levels, calendar date selection and normalization, leap-year/month
+boundaries, calendar deselection, table group accounting, overlapping labels, sorting, and CSV escaping.

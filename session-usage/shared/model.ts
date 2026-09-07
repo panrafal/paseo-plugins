@@ -52,7 +52,16 @@ export interface Filters {
 }
 export const EMPTY_FILTERS: Filters = { query: "", providers: [], projects: [], workspaces: [], labels: [], models: [], archived: "all", source: "all", kind: "all", coverage: "all", period: "all", from: "", to: "" };
 export interface SessionRow { session: Session; buckets: Bucket[]; metrics: Metrics }
-export type SortKey = DisplayMetric | "title" | "provider" | "project" | "model" | "startedAt" | "endedAt";
+export type SortKey = DisplayMetric | "title" | "provider" | "project" | "model" | "effort" | "startedAt" | "endedAt";
+const EFFORT_LEVELS = ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"];
+const effortRank = (effort: string) => {
+  const rank = EFFORT_LEVELS.indexOf(effort);
+  return rank < 0 ? EFFORT_LEVELS.length : rank;
+};
+export function recordedEfforts(buckets: Bucket[]): string[] {
+  return [...new Set(buckets.flatMap((b) => b.effort ? [b.effort] : []))]
+    .sort((a, b) => effortRank(a) - effortRank(b) || a.localeCompare(b));
+}
 const DAY_MS = 86_400_000;
 export function dateRange(filters: Filters, now = Date.now()): { from: string; to: string; error: string | null } {
   if (filters.period === "all") return { from: "", to: "", error: null };
@@ -79,7 +88,7 @@ export function filterSessions(sessions: Session[], filters: Filters, now = Date
     if (filters.source !== "all" && Boolean(session.agentId || session.workspaceId) !== (filters.source === "paseo")) continue;
     if (filters.kind !== "all" && filters.kind !== session.kind) continue;
     if (filters.coverage !== "all" && filters.coverage !== session.coverage) continue;
-    if (query && ![session.title, session.id, session.agentId, session.project, session.workspace, session.cwd, session.branch, ...session.labels, ...session.buckets.map((b) => b.model)].join(" ").toLocaleLowerCase().includes(query)) continue;
+    if (query && ![session.title, session.id, session.agentId, session.project, session.workspace, session.cwd, session.branch, ...session.labels, ...session.buckets.flatMap((b) => [b.model, b.effort])].join(" ").toLocaleLowerCase().includes(query)) continue;
     const buckets = session.buckets.filter((b) => inRange(b.day) && selected(filters.models, b.model));
     if (session.buckets.length && !buckets.length) continue;
     if (!session.buckets.length && (filters.models.length || !inRange(session.startedAt?.slice(0, 10) ?? "unknown"))) continue;
@@ -112,6 +121,11 @@ export function aggregate(rows: SessionRow[], key: DisplayMetric, average = fals
 export function sortRows(rows: SessionRow[], key: SortKey, direction: "asc" | "desc"): SessionRow[] {
   const value = (row: SessionRow): string | number | null => {
     if (key === "model") return [...new Set(row.buckets.map((b) => b.model))].sort().join(", ");
+    // Sessions with several levels sort by their highest recorded effort.
+    if (key === "effort") {
+      const effort = recordedEfforts(row.buckets).at(-1);
+      return effort === undefined ? null : `${effortRank(effort)}:${effort}`;
+    }
     if (key in METRICS) return metricValue(row, key as DisplayMetric);
     return row.session[key as "title" | "provider" | "project" | "startedAt" | "endedAt"];
   };
@@ -167,13 +181,16 @@ export function formatMetric(key: DisplayMetric, value: number | null, compact =
 }
 
 /** Quoting plus formula neutralization for spreadsheet applications. */
-export function toCsv(rows: SessionRow[]): string {
+export function encodeCsv(lines: unknown[][]): string {
   const cell = (value: unknown) => {
     let text = value === null || value === undefined ? "" : String(value);
     if (/^[\s]*[=+@-]/.test(text) || /^[\t\r\n]/.test(text)) text = `'${text}`;
     return `"${text.replace(/"/g, '""')}"`;
   };
-  const header = ["Session ID", "Title", "Provider", "Project", "Workspace", "Models", "Archived", "Kind", "Started UTC", "Last activity UTC", "Coverage", ...DISPLAY_METRICS.map((key) => METRICS[key].label)];
-  const lines: unknown[][] = [header, ...rows.map((r) => [r.session.id, r.session.title, r.session.provider, r.session.project, r.session.workspace, [...new Set(r.buckets.map((b) => b.model))].join("; "), r.session.archived, r.session.kind, r.session.startedAt, r.session.endedAt, r.session.coverage, ...DISPLAY_METRICS.map((key) => metricValue(r, key))])];
   return lines.map((line) => line.map(cell).join(",")).join("\r\n");
+}
+export function toCsv(rows: SessionRow[]): string {
+  const header = ["Session ID", "Title", "Provider", "Project", "Workspace", "Models", "Effort", "Archived", "Kind", "Started UTC", "Last activity UTC", "Coverage", ...DISPLAY_METRICS.map((key) => METRICS[key].label)];
+  const lines: unknown[][] = [header, ...rows.map((r) => [r.session.id, r.session.title, r.session.provider, r.session.project, r.session.workspace, [...new Set(r.buckets.map((b) => b.model))].join("; "), recordedEfforts(r.buckets).join("; "), r.session.archived, r.session.kind, r.session.startedAt, r.session.endedAt, r.session.coverage, ...DISPLAY_METRICS.map((key) => metricValue(r, key))])];
+  return encodeCsv(lines);
 }

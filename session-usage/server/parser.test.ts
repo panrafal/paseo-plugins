@@ -17,6 +17,38 @@ function parse(provider: "claude" | "codex", records: unknown[]) {
 const codex = (type: string, payload: unknown, timestamp = date) => ({ type, timestamp, payload });
 const token = (u: unknown, timestamp = date) => codex("event_msg", { type: "token_count", info: { total_token_usage: u, last_token_usage: u } }, timestamp);
 
+test("Claude records effort per message without carrying it into messages that omit it", () => {
+  const assistant = (id: string, effort?: unknown, output = 20) => ({
+    type: "assistant", uuid: `${id}-${output}`, timestamp: date, effort,
+    message: { id, model: "claude-opus-4-6", usage: { input_tokens: 100, output_tokens: output }, content: [] },
+  });
+  const result = parse("claude", [assistant("a", "high"), assistant("a", "high", 30), assistant("b", "medium"), assistant("c"), assistant("d", { invalid: true })]);
+  assert.deepEqual(result.buckets.map((b) => [b.effort, b.metrics.inputTokens, b.metrics.outputTokens]), [
+    [null, 200, 40], ["high", 100, 30], ["medium", 100, 20],
+  ]);
+  assert.equal(result.metrics.requests, 4);
+  assert.equal(result.metrics.inputTokens, 400);
+});
+
+test("Codex preserves effort changes, applied settings, explicit none, and unrecorded turns", () => {
+  const response = (id: string) => codex("token_usage_record", { response_id: id, usage: usage(100) });
+  const result = parse("codex", [
+    codex("turn_context", { model: "gpt-5.6-sol", effort: "low" }), response("a"),
+    codex("turn_context", { model: "gpt-5.6-sol", effort: "xhigh" }), response("b"), response("b"),
+    codex("event_msg", { type: "thread_settings_applied", thread_settings: { model: "gpt-5.6-sol", reasoning_effort: "medium" } }), response("c"),
+    codex("turn_context", { model: "gpt-5.6-sol", effort: "none" }), response("d"),
+    codex("turn_context", { model: "gpt-5.6-sol" }), response("e"),
+  ]);
+  assert.deepEqual(result.buckets.map((b) => b.effort), [null, "low", "medium", "none", "xhigh"]);
+  assert.equal(result.metrics.inputTokens, 500);
+  assert.equal(result.metrics.requests, 5);
+  const legacy = parse("codex", [
+    codex("turn_context", { model: "gpt-5.6-sol", effort: "low" }), token(usage(100)),
+    codex("turn_context", { model: "gpt-5.6-sol", effort: "high" }), token(usage(300, 0, 40)),
+  ]);
+  assert.deepEqual(legacy.buckets.map((b) => [b.effort, b.metrics.inputTokens]), [["high", 200], ["low", 100]]);
+});
+
 test("Claude merges message usage snapshots and counts cache writes only once", () => {
   const message = { id: "m1", model: "claude-opus-4-6", role: "assistant", usage: { input_tokens: 10, cache_read_input_tokens: 100, cache_creation_input_tokens: 50, output_tokens: 5, cache_creation: { ephemeral_1h_input_tokens: 20 }, output_tokens_details: { thinking_tokens: 2 } } };
   const records = [

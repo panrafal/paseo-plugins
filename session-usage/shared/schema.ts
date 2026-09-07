@@ -41,6 +41,7 @@ export function addMetrics(target: Metrics, source: Metrics): Metrics {
 export const BucketSchema = z.object({
   day: z.string(), // UTC YYYY-MM-DD, or "unknown" for undated records.
   model: z.string(),
+  effort: z.string().nullable().optional(), // Omitted by older snapshots; null when unrecorded.
   metrics: MetricsSchema,
   tools: z.record(z.string(), z.number().int().nonnegative()),
 });
