@@ -157,7 +157,7 @@ function RunRowImpl({ run, theme, scheme, nowMs, navigation }: RunRowProps) {
                 />
               ) : null}
               {run.workspace.archivedAt ? (
-                <Badge text="workspace archived" theme={theme} styles={styles} />
+                <Badge label="Workspace archived" theme={theme} styles={styles} />
               ) : null}
             </>
           ) : null}
@@ -178,7 +178,7 @@ function RunRowImpl({ run, theme, scheme, nowMs, navigation }: RunRowProps) {
                 styles={styles}
               />
               {run.agent.archivedAt ? (
-                <Badge text="agent archived" theme={theme} styles={styles} />
+                <Badge label="Agent archived" theme={theme} styles={styles} />
               ) : null}
             </>
           ) : null}
@@ -328,11 +328,15 @@ function PullRequestLink({
   );
 }
 
-function Badge({ text, theme, styles }: { text: string; theme: PluginTheme; styles: RowStyles }) {
+/**
+ * Archived state as the archive glyph alone: the meta line is already dense, and the word
+ * "archived" next to a workspace or an agent adds nothing the icon does not say. The label is
+ * what screen readers and the web title read.
+ */
+function Badge({ label, theme, styles }: { label: string; theme: PluginTheme; styles: RowStyles }) {
   return (
-    <View style={styles.badge}>
+    <View style={styles.badge} accessibilityRole="image" accessibilityLabel={label}>
       <Icon name="Archive" size={11} color={theme.colors.statusWarning} />
-      <Text style={styles.badgeText}>{text}</Text>
     </View>
   );
 }
@@ -413,16 +417,14 @@ function createStyles(theme: PluginTheme) {
     metaText: { fontSize: 12, flexShrink: 1 },
     metaLink: { textDecorationLine: "underline" },
     badge: {
-      flexDirection: "row",
       alignItems: "center",
-      gap: 4,
-      paddingHorizontal: 6,
-      paddingVertical: 1,
+      justifyContent: "center",
+      paddingHorizontal: 3,
+      paddingVertical: 2,
       borderRadius: 6,
       borderWidth: StyleSheet.hairlineWidth,
       borderColor: theme.colors.statusWarning,
     },
-    badgeText: { color: theme.colors.statusWarning, fontSize: 11, fontWeight: "600" },
     preview: {
       color: theme.colors.foregroundMuted,
       fontSize: 13,

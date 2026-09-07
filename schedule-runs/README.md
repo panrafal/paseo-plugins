@@ -13,6 +13,13 @@ Every run record of every schedule under the daemon's `$PASEO_HOME/schedules` di
 first. Paseo never prunes run records, so the feed is the full history. The server returns the
 newest 500 runs; the header says "oldest not shown" when the daemon holds more.
 
+The feed is grouped by date, newest group first. The past week gets one group per day ("Today",
+"Yesterday", then `Fri, Sep 4`), the month before that one group per week starting on Monday
+(`Aug 3 – Aug 9`), the year before that one group per calendar month (`June`, with the year added
+once it is not the current one), and anything older one group per year. Each heading carries the
+number of runs under it, counted after filtering. A run with no usable timestamp lands under
+"Undated".
+
 Schedules that prompt an existing agent (Paseo calls them heartbeats) are hidden by default and
 appear when **Show heartbeats** is on. Their runs carry no workspace of their own; the targeted
 agent's workspace is shown instead.
@@ -25,8 +32,9 @@ Each run is one card:
    schedule name, and how long ago the run started. Pressing the line expands the card.
 2. **Meta line** — status, elapsed time (still counting while running), the workspace name and
    branch (a link that opens the workspace), the pull request as `#123` when one is known (a
-   link that opens it in the browser, colored by its state), the agent title, and an amber badge
-   when the agent or the workspace has been archived. "agent gone" or "workspace gone" means the
+   link that opens it in the browser, colored by its state), the agent title, and a small amber archive
+   icon after the workspace or the agent that has been archived (its accessible label reads
+   "Workspace archived" or "Agent archived"). "agent gone" or "workspace gone" means the
    daemon no longer lists it at all.
 3. **Preview** — the first three lines of the final response, or of the error in red.
 

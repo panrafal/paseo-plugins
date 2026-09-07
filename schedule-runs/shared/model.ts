@@ -245,3 +245,153 @@ export function describeCounts(total: number, counts: StatusCounts): string {
   if (counts.running > 0) parts.push(`${counts.running} running`);
   return parts.join(" · ");
 }
+
+/**
+ * How a run's date is bucketed in the feed: the last week gets a group per day, the month
+ * before that a group per week, the year before that a group per month, and anything older a
+ * group per year. Coarser buckets keep an old feed readable without hiding when things ran.
+ */
+export type RunGroupKind = "day" | "week" | "month" | "year" | "unknown";
+
+export interface RunGroup {
+  /** Stable across refreshes: the bucket kind and its start. */
+  key: string;
+  kind: RunGroupKind;
+  label: string;
+  /** Start of the bucket in ms, or 0 for runs with no usable timestamp. */
+  startMs: number;
+  runs: RunRow[];
+}
+
+/** Days of the past week that keep a group of their own, today included. */
+const DAY_GROUP_DAYS = 7;
+/** Days before those that are grouped by week. */
+const WEEK_GROUP_DAYS = 30;
+/** Days before those that are grouped by month. */
+const MONTH_GROUP_DAYS = 365;
+
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+const MONTH_NAMES = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
+
+function startOfDay(ms: number): number {
+  const date = new Date(ms);
+  date.setHours(0, 0, 0, 0);
+  return date.getTime();
+}
+
+/** Weeks start on Monday, the way cron-driven work is usually read. */
+function startOfWeek(ms: number): number {
+  const date = new Date(startOfDay(ms));
+  date.setDate(date.getDate() - ((date.getDay() + 6) % 7));
+  return date.getTime();
+}
+
+function startOfMonth(ms: number): number {
+  const date = new Date(ms);
+  return new Date(date.getFullYear(), date.getMonth(), 1).getTime();
+}
+
+function startOfYear(ms: number): number {
+  return new Date(new Date(ms).getFullYear(), 0, 1).getTime();
+}
+
+function monthDay(ms: number): string {
+  const date = new Date(ms);
+  return `${MONTHS[date.getMonth()]} ${date.getDate()}`;
+}
+
+/** The time a run is filed under: when it actually started, or when it was due if it never did. */
+export function runTime(run: Pick<RunRow, "startedAt" | "scheduledFor">): number {
+  return parseTime(run.startedAt) || parseTime(run.scheduledFor);
+}
+
+function groupLabel(kind: RunGroupKind, startMs: number, nowMs: number, dayFloor: number): string {
+  switch (kind) {
+    case "day": {
+      const today = startOfDay(nowMs);
+      if (startMs >= today) return "Today";
+      if (startMs === startOfDay(today - DAY_MS)) return "Yesterday";
+      return `${WEEKDAYS[new Date(startMs).getDay()]}, ${monthDay(startMs)}`;
+    }
+    case "week": {
+      // The newest week is cut short where the per-day groups begin, so the ranges never overlap.
+      const end = Math.min(startMs + 6 * DAY_MS, dayFloor - DAY_MS);
+      return end <= startMs ? monthDay(startMs) : `${monthDay(startMs)} – ${monthDay(end)}`;
+    }
+    case "month": {
+      const date = new Date(startMs);
+      const name = MONTH_NAMES[date.getMonth()];
+      const year = date.getFullYear();
+      return year === new Date(nowMs).getFullYear() ? `${name}` : `${name} ${year}`;
+    }
+    case "year":
+      return String(new Date(startMs).getFullYear());
+    default:
+      return "Undated";
+  }
+}
+
+/**
+ * Buckets runs by date, newest bucket first, keeping the order the runs arrive in inside each
+ * bucket. Boundaries are calendar-aligned, so a run never lands in two groups.
+ */
+export function groupRuns(runs: readonly RunRow[], nowMs: number): RunGroup[] {
+  const today = startOfDay(nowMs);
+  const dayFloor = today - (DAY_GROUP_DAYS - 1) * DAY_MS;
+  const weekFloor = startOfWeek(dayFloor - WEEK_GROUP_DAYS * DAY_MS);
+  const monthFloor = startOfMonth(weekFloor - MONTH_GROUP_DAYS * DAY_MS);
+
+  const groups = new Map<string, RunGroup>();
+  for (const run of runs) {
+    const time = runTime(run);
+    let kind: RunGroupKind;
+    let startMs: number;
+    if (!time) {
+      kind = "unknown";
+      startMs = 0;
+    } else if (time >= dayFloor) {
+      kind = "day";
+      // A run scheduled a little ahead of the clock still belongs with today's.
+      startMs = Math.min(startOfDay(time), today);
+    } else if (time >= weekFloor) {
+      kind = "week";
+      startMs = startOfWeek(time);
+    } else if (time >= monthFloor) {
+      kind = "month";
+      startMs = startOfMonth(time);
+    } else {
+      kind = "year";
+      startMs = startOfYear(time);
+    }
+    const key = `${kind}:${startMs}`;
+    const existing = groups.get(key);
+    if (existing) {
+      existing.runs.push(run);
+      continue;
+    }
+    groups.set(key, {
+      key,
+      kind,
+      label: groupLabel(kind, startMs, nowMs, dayFloor),
+      startMs,
+      runs: [run],
+    });
+  }
+
+  // Undated runs sort last; everything else newest bucket first.
+  return [...groups.values()].sort((a, b) => b.startMs - a.startMs);
+}

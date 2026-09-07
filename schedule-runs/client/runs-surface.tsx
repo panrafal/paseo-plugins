@@ -20,6 +20,7 @@ import {
   countByStatus,
   describeCounts,
   filterRuns,
+  groupRuns,
 } from "../shared/model";
 import { FilterBar } from "./filter-bar";
 import { RunRow } from "./run-row";
@@ -86,6 +87,8 @@ export function RunsSurface({ theme, host, layout, navigation }: PluginSurfacePr
   const scheduleCounts = useMemo(() => countBySchedule(runs ?? []), [runs]);
   const statusCounts = useMemo(() => countByStatus(runs ?? []), [runs]);
   const visible = useMemo(() => filterRuns(runs ?? [], filters), [runs, filters]);
+  // The feed arrives newest first, so grouping by age keeps it in order and only adds headings.
+  const groups = useMemo(() => groupRuns(visible, nowMs), [visible, nowMs]);
 
   const total = runs?.length ?? 0;
   const loading = query.isPending;
@@ -174,15 +177,25 @@ export function RunsSurface({ theme, host, layout, navigation }: PluginSurfacePr
         </View>
       ) : (
         <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
-          {visible.map((run) => (
-            <RunRow
-              key={run.id}
-              run={run}
-              theme={theme}
-              scheme={scheme}
-              nowMs={nowMs}
-              navigation={navigation}
-            />
+          {groups.map((group) => (
+            <View key={group.key} style={styles.group}>
+              <View style={styles.groupHeader}>
+                <Text style={styles.groupLabel}>{group.label}</Text>
+                <Text style={styles.groupCount}>{group.runs.length}</Text>
+              </View>
+              <View style={styles.groupRuns}>
+                {group.runs.map((run) => (
+                  <RunRow
+                    key={run.id}
+                    run={run}
+                    theme={theme}
+                    scheme={scheme}
+                    nowMs={nowMs}
+                    navigation={navigation}
+                  />
+                ))}
+              </View>
+            </View>
           ))}
         </ScrollView>
       )}
@@ -244,7 +257,18 @@ function createStyles(theme: PluginTheme, compact: boolean) {
     refresh: { width: 28, height: 28, alignItems: "center", justifyContent: "center" },
 
     scroll: { flex: 1 },
-    content: { paddingHorizontal: gutter, paddingVertical: 12, gap: compact ? 8 : 10 },
+    content: { paddingHorizontal: gutter, paddingVertical: 12, gap: compact ? 14 : 18 },
+    group: { gap: compact ? 6 : 8 },
+    groupHeader: { flexDirection: "row", alignItems: "center", gap: 8 },
+    groupLabel: {
+      color: theme.colors.foregroundMuted,
+      fontSize: 12,
+      fontWeight: "700",
+      textTransform: "uppercase",
+      letterSpacing: 0.6,
+    },
+    groupCount: { color: theme.colors.foregroundMuted, fontSize: 12, opacity: 0.7 },
+    groupRuns: { gap: compact ? 8 : 10 },
 
     centered: {
       flex: 1,
