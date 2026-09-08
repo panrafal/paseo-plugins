@@ -1,0 +1,31 @@
+{
+  "name": "agents-dash-list",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Paseo plugin: sidebar dashboard listing workspaces and their agents grouped by status, with quick archive and mark-as-unread actions.",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@getpaseo/client": "^0.7.1",
+    "@getpaseo/protocol": "^0.7.1",
+    "@tanstack/react-query": "^5.90.11",
+    "@types/node": "^24.0.0",
+    "@types/react": "~19.2.0",
+    "react": "19.1.0",
+    "react-native": "0.81.5",
+    "typescript": "^5.9.3",
+    "zod": "^4.4.3"
+  },
+  "license": "MIT",
+  "author": "panrafal",
+  "homepage": "https://github.com/panrafal/paseo-plugins/tree/main/agents-dash-list",
+  "bugs": {
+    "url": "https://github.com/panrafal/paseo-plugins/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/panrafal/paseo-plugins.git",
+    "directory": "agents-dash-list"
+  }
+}

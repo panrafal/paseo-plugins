@@ -1,0 +1,29 @@
+{
+  "name": "paseo-plugins",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Monorepo of Paseo plugins.",
+  "workspaces": [
+    "task-link",
+    "vscode-open-remote",
+    "agents-dash-list",
+    "chat-resume",
+    "agent-heartbeats",
+    "schedule-runs",
+    "agents-history",
+    "session-usage"
+  ],
+  "scripts": {
+    "typecheck": "npm run typecheck --workspaces"
+  },
+  "license": "MIT",
+  "author": "panrafal",
+  "homepage": "https://github.com/panrafal/paseo-plugins",
+  "bugs": {
+    "url": "https://github.com/panrafal/paseo-plugins/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/panrafal/paseo-plugins.git"
+  }
+}

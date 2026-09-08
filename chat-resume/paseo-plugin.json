@@ -1,0 +1,4 @@
+{
+  "id": "chat-resume",
+  "requirements": { "paseo": ">=0.7.2-0" }
+}

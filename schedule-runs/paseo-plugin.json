@@ -1,0 +1,4 @@
+{
+  "id": "schedule-runs",
+  "requirements": { "paseo": ">=0.7.2-0" }
+}
