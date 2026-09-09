@@ -4,6 +4,9 @@ Paseo plugin that adds an **Editor** composer pill to every active agent on the 
 the plugin is installed. Pressing it opens the agent's current working directory — the project
 directory or its worktree — through the Paseo host name.
 
+![Editor pill](./screenshots/vscode-open-remote-pill.png)
+![Remote editor settings](./screenshots/vscode-open-remote-settings.png)
+
 Desktop links use one of these prefixes:
 
 | Editor | URL |

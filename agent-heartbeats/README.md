@@ -3,6 +3,9 @@
 Paseo plugin that adds a compact heartbeat icon and count to every active agent's composer. Pressing
 the pill opens an agent-scoped panel for reviewing and managing that agent's heartbeats.
 
+![Heartbeat pill](./screenshots/agent-heartbeats-pill.png)
+![Heartbeats panel](./screenshots/agent-heartbeats-panel.png)
+
 ## Interface
 
 - The composer pill contains only a heartbeat icon and the number of currently scheduled

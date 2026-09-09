@@ -4,6 +4,8 @@ Adds **Session usage** to Paseo's sidebar and Command Center. It reads Claude Co
 transcripts on the selected daemon, including archived sessions, subagents, and sessions started
 outside Paseo, then joins them with Paseo's project, workspace, and agent records.
 
+![Session usage](./screenshots/session-usage.png)
+
 ## Using the surface
 
 - The **sortable table** defaults to one row per provider session. Choose **Columns** to show any

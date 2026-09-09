@@ -3,6 +3,8 @@
 Adds a composer pill when an agent's branch, title, or workspace name contains a task ID.
 Press the pill to open the configured link. Previously named `capitally-tasks`.
 
+![Task link settings](./screenshots/task-link-settings.png)
+
 ## Settings
 
 Open **Settings → Plugins → task-link → Task link**, or choose **Configure task link** in the

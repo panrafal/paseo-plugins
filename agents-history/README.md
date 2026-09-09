@@ -8,6 +8,8 @@ transcript files on the daemon host (or `grep`, for regular expressions).
 Paseo's own History screen searches agent titles and hides archived workspaces; this surface is
 for finding the workspace where something was discussed weeks ago.
 
+![Agents history](./screenshots/agents-history.png)
+
 ## What is listed
 
 Every workspace in the daemon's registry, newest activity first, grouped into **Active** and
