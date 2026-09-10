@@ -17,6 +17,13 @@ Provider renewal windows are not currently exposed through the public plugin API
 therefore uses the latest refreshed agent error as the source of the exhaustion state and reset time.
 Errors without a parseable renewal time still get the handover pill, but not the resume pill.
 
+## Limitations
+
+- Pills appear only when the latest agent state is a usage-limit / quota-exhaustion error.
+- The resume pill needs a parseable renewal time in that error; otherwise only handover is shown.
+- The handover draft lives in a plugin panel, not the native composer. The new agent does not
+  start until **Start agent** is pressed.
+
 ## Install
 
 ```bash

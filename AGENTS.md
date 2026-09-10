@@ -2,7 +2,7 @@
 
 This file is the canonical source of agent guidance for this repository. `CLAUDE.md` imports it;
 update rules here only. The public overview, screenshots, and install commands live in
-[`README.md`](./README.md). Each plugin keeps its screenshots under `screenshots/` and
+[`README.md`](./README.md). Each plugin keeps its screenshots under `images/` and
 embeds them in its own README.
 
 ## Repository overview

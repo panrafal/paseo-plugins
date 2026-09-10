@@ -2,7 +2,7 @@
   "name": "agents-history",
   "private": true,
   "version": "0.1.0",
-  "description": "Paseo plugin: sidebar surface listing every workspace and agent, archived ones included, with filters and a ranked full-text search (SQLite FTS5 index, grep for regex) over on-disk conversation transcripts.",
+  "description": "Sidebar history of every workspace and agent, including archived ones, with filters and ranked search over on-disk conversation transcripts.",
   "scripts": {
     "typecheck": "tsc --noEmit"
   },

@@ -4,8 +4,8 @@ Paseo plugin that adds an **Editor** composer pill to every active agent on the 
 the plugin is installed. Pressing it opens the agent's current working directory — the project
 directory or its worktree — through the Paseo host name.
 
-![Editor pill](./screenshots/vscode-open-remote-pill.png)
-![Remote editor settings](./screenshots/vscode-open-remote-settings.png)
+![Editor pill](./images/vscode-open-remote-pill.png)
+![Remote editor settings](./images/vscode-open-remote-settings.png)
 
 Desktop links use one of these prefixes:
 
@@ -37,6 +37,15 @@ https://vscode.dev/tunnel/<host><cwd>
 VS Code for the Web cannot connect over Remote SSH. A [VS Code Remote Tunnel](https://code.visualstudio.com/docs/remote/tunnels)
 must already be running on the daemon machine, and its tunnel name must match the host name configured
 in Paseo.
+
+## Limitations
+
+- The pill is hidden on phones. Tablets open vscode.dev and need a tunnel whose name matches the
+  Paseo host.
+- Install it on each **remote** daemon you care about. The plugin API cannot hide the pill on a
+  local daemon, so a local install also adds pills there.
+- Desktop opening needs VS Code Remote - SSH or Cursor Remote SSH, and the Paseo host name must
+  resolve in the desktop machine's SSH config.
 
 ## Install
 

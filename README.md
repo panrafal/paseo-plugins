@@ -33,7 +33,7 @@ Then `paseo plugin ls` should show `running`. After source edits: `npm run typec
 waiting, unread, in progress, failing, approved, idle, merged or closed. Archive or mark unread
 from the row.
 
-![Agents dash](./agents-dash-list/screenshots/agents-dash-list.png)
+![Agents dash](./agents-dash-list/images/agents-dash-list.png)
 
 No settings screen. Open **Agents dash** in the sidebar or Command Center. It lists every workspace
 on the selected host.
@@ -44,7 +44,7 @@ on the selected host.
 archived ones. Filter by archived state, provider, project, label, and period. Ranked search
 indexes on-disk transcripts (names and paths first); regex mode greps instead.
 
-![Agents history](./agents-history/screenshots/agents-history.png)
+![Agents history](./agents-history/images/agents-history.png)
 
 No settings screen. Filters live on the surface. The index is stored under
 `$PASEO_HOME/plugin-data`; the plugin does not write daemon or provider state.
@@ -55,7 +55,7 @@ No settings screen. Filters live on the surface. The index is stored under
 archived state, and the agent's final response. Filter by schedule, status, archived state, and
 keyword.
 
-![Schedule runs](./schedule-runs/screenshots/schedule-runs.png)
+![Schedule runs](./schedule-runs/images/schedule-runs.png)
 
 No settings screen. Reads schedule records on disk; it does not create, pause, or delete
 schedules.
@@ -66,7 +66,7 @@ schedules.
 local transcripts, including archived sessions and subagents. Sortable table, provider charts,
 calendar, and CSV export.
 
-![Session usage](./session-usage/screenshots/session-usage.png)
+![Session usage](./session-usage/images/session-usage.png)
 
 No settings screen. Filter the report by provider, project, workspace, and date on the surface.
 Reads local files only.
@@ -77,8 +77,8 @@ Reads local files only.
 panel that lists, creates, edits, and deletes that agent's heartbeats. Schedules accept cron, delays
 such as `15m`, and phrases such as `every 15 minutes`.
 
-![Heartbeat pill](./agent-heartbeats/screenshots/agent-heartbeats-pill.png)
-![Heartbeats panel](./agent-heartbeats/screenshots/agent-heartbeats-panel.png)
+![Heartbeat pill](./agent-heartbeats/images/agent-heartbeats-pill.png)
+![Heartbeats panel](./agent-heartbeats/images/agent-heartbeats-panel.png)
 
 No settings screen. The pill is per agent; the panel is an agent tab.
 
@@ -87,7 +87,7 @@ No settings screen. The pill is per agent; the panel is an agent tab.
 [`task-link`](./task-link) — a composer pill when the agent's branch, title, or workspace name
 matches a regular expression. Press the pill to open the configured HTTP(S) link.
 
-![Task link settings](./task-link/screenshots/task-link-settings.png)
+![Task link settings](./task-link/images/task-link-settings.png)
 
 Configure under **Settings → Plugins → task-link → Task link**, or **Configure task link** in the
 Command Center:
@@ -105,8 +105,8 @@ before using the pill. Settings are stored under `$PASEO_HOME/plugin-data/task-l
 working directory in VS Code, Cursor, or a custom URI. Hidden on phones; tablets open vscode.dev
 through a tunnel named after the Paseo host.
 
-![Editor pill](./vscode-open-remote/screenshots/vscode-open-remote-pill.png)
-![Remote editor settings](./vscode-open-remote/screenshots/vscode-open-remote-settings.png)
+![Editor pill](./vscode-open-remote/images/vscode-open-remote-pill.png)
+![Remote editor settings](./vscode-open-remote/images/vscode-open-remote-settings.png)
 
 Configure under **Settings → Plugins → vscode-open-remote → Remote editor**, or **Configure remote
 editor** in the Command Center. Settings live under

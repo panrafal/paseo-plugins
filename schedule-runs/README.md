@@ -7,7 +7,7 @@ created, whether those have since been archived, and the agent's final response.
 
 Paseo's own Schedules screen shows the schedules; this surface shows what came out of them.
 
-![Schedule runs](./screenshots/schedule-runs.png)
+![Schedule runs](./images/schedule-runs.png)
 
 ## What is listed
 

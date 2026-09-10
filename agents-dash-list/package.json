@@ -2,7 +2,7 @@
   "name": "agents-dash-list",
   "private": true,
   "version": "0.1.0",
-  "description": "Paseo plugin: sidebar dashboard listing workspaces and their agents grouped by status, with quick archive and mark-as-unread actions.",
+  "description": "Sidebar dashboard of workspaces grouped by waiting, unread, in progress, failing, approved, idle, or closed, with archive and unread actions.",
   "scripts": {
     "typecheck": "tsc --noEmit"
   },

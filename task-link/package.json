@@ -2,7 +2,7 @@
   "name": "task-link",
   "private": true,
   "version": "0.1.0",
-  "description": "Paseo plugin: configurable task links extracted from agent branches and titles.",
+  "description": "Composer pill that opens a task link when a branch, title, or workspace name matches a configurable pattern.",
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "node test/task-link.test.cjs"

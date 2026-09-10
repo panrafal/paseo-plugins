@@ -2,7 +2,7 @@
   "name": "agent-heartbeats",
   "version": "0.1.0",
   "private": true,
-  "description": "Paseo plugin: per-agent heartbeat count and management panel.",
+  "description": "Composer pill with the heartbeat count, plus a panel to list, create, edit, and delete that agent's heartbeats.",
   "scripts": {
     "typecheck": "tsc --noEmit"
   },

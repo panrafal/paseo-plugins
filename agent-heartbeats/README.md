@@ -3,8 +3,8 @@
 Paseo plugin that adds a compact heartbeat icon and count to every active agent's composer. Pressing
 the pill opens an agent-scoped panel for reviewing and managing that agent's heartbeats.
 
-![Heartbeat pill](./screenshots/agent-heartbeats-pill.png)
-![Heartbeats panel](./screenshots/agent-heartbeats-panel.png)
+![Heartbeat pill](./images/agent-heartbeats-pill.png)
+![Heartbeats panel](./images/agent-heartbeats-panel.png)
 
 ## Interface
 
@@ -30,6 +30,12 @@ The plugin reads the daemon's atomic schedule records under `$PASEO_HOME/schedul
 agent-target heartbeats, including heartbeats created outside this plugin. Mutations run Paseo's
 supported `heartbeat create`, `heartbeat update`, and `heartbeat delete` commands without a shell,
 after checking that the heartbeat belongs to the selected agent.
+
+## Limitations
+
+- Completed heartbeats are not counted or listed.
+- Changing a heartbeat prompt or maximum-run count creates a replacement and resets that
+  heartbeat's run history. Cron-only edits keep history.
 
 ## Install
 

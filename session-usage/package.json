@@ -2,7 +2,7 @@
   "name": "session-usage",
   "private": true,
   "version": "0.1.0",
-  "description": "Paseo plugin: Claude and Codex session usage, sortable statistics and provider comparison charts.",
+  "description": "Claude and Codex session usage from local transcripts: sortable stats, provider charts, cost estimates, and CSV export.",
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test --test-isolation=none server/*.test.ts"

@@ -2,7 +2,7 @@
   "name": "chat-resume",
   "private": true,
   "version": "0.1.0",
-  "description": "Resume quota-exhausted agents or hand their work to another provider.",
+  "description": "Composer pills that resume a quota-exhausted agent after allowance renewal or prepare a handover to another provider.",
   "scripts": {
     "typecheck": "tsc --noEmit"
   },

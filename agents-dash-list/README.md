@@ -4,7 +4,7 @@ Paseo plugin that adds an **Agents dash** entry to the app sidebar, next to "New
 "History" and "Schedules". It lists every workspace on the selected host and the agents inside
 it, grouped by what needs your attention.
 
-![Agents dash](./screenshots/agents-dash-list.png)
+![Agents dash](./images/agents-dash-list.png)
 
 ## Groups
 

@@ -2,7 +2,7 @@
   "name": "schedule-runs",
   "private": true,
   "version": "0.1.0",
-  "description": "Paseo plugin: sidebar feed of every schedule run with status, workspace, agent, final response, and filters.",
+  "description": "Sidebar feed of every schedule run with status, workspace, agent, archived state, and the agent's final response.",
   "scripts": {
     "typecheck": "tsc --noEmit"
   },

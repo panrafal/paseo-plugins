@@ -4,7 +4,7 @@ Adds **Session usage** to Paseo's sidebar and Command Center. It reads Claude Co
 transcripts on the selected daemon, including archived sessions, subagents, and sessions started
 outside Paseo, then joins them with Paseo's project, workspace, and agent records.
 
-![Session usage](./screenshots/session-usage.png)
+![Session usage](./images/session-usage.png)
 
 ## Using the surface
 
@@ -145,31 +145,42 @@ the SDK's `result.total_cost_usd` events. No pricing or provider account API is 
   malformed, and unfinished lines are skipped with a partial-data notice. Scan errors retain the
   previous snapshot. Plugin cleanup aborts active streams and clears the cache.
 
-## Development and installation
+## Limitations
 
-From the monorepo root (Node 22.7+ for the test runner):
+- Reads local Claude and Codex transcripts only; other providers are not measured.
+- Cost figures are a standard short-context API equivalent from a fixed price table, not a bill
+  or subscription meter. No pricing or provider account API is contacted at runtime.
+- Message text, tool arguments, tool results, and credentials never leave the daemon parser.
+- An em dash means a measurement is absent; averages divide by known sessions only.
+
+## Install
 
 ```bash
 paseo plugin add panrafal/paseo-plugins:session-usage
 ```
 
-From a checkout:
+From a checkout on the daemon host (Node 22.7+ for the test runner):
 
 ```bash
 npm install
-npm test --workspace=session-usage
 npm run typecheck
 paseo plugin install /absolute/path/to/paseo-plugins/session-usage
 paseo plugin ls
-paseo plugin logs session-usage
 ```
 
 After editing, typecheck and run `paseo plugin reload session-usage`. Use `--host <target>` for
-another daemon. The plugin registers a sidebar surface and a global Command Center action;
-both registrations and the server index are removed on plugin cleanup.
+another daemon.
 
-The UI uses React Native primitives and theme colors. Filters use anchored popovers on desktop
-and Paseo sheets on compact clients; the statistics table remains horizontally scrollable.
+## Development
+
+```bash
+npm test --workspace=session-usage
+```
+
+The plugin registers a sidebar surface and a global Command Center action; both registrations
+and the server index are removed on plugin cleanup. The UI uses React Native primitives and
+theme colors. Filters use anchored popovers on desktop and Paseo sheets on compact clients; the
+statistics table remains horizontally scrollable.
 
 Regression tests cover provider accounting, duplicate events, compaction counters, child metadata,
 malformed/oversized records, active/archive copies, missing files, metadata joins, changed-file

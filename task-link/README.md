@@ -3,7 +3,7 @@
 Adds a composer pill when an agent's branch, title, or workspace name contains a task ID.
 Press the pill to open the configured link. Previously named `capitally-tasks`.
 
-![Task link settings](./screenshots/task-link-settings.png)
+![Task link settings](./images/task-link-settings.png)
 
 ## Settings
 
@@ -47,6 +47,13 @@ Within each source, matches are checked from left to right.
 - `client/pill.tsx` follows agent/workspace updates and refreshes branches after agent turns.
 - Pills disappear when no task matches or the agent is archived, and are removed on disconnect
   or plugin reload along with subscriptions and the settings refresh timer.
+
+## Limitations
+
+- The shipped default matches `CT-1234` style IDs and opens Notion. Change the pattern and URL
+  in settings before relying on the pill.
+- The native settings screen needs a Paseo client with `addSettingsScreen`, `openSettings`, and
+  `@getpaseo/plugin/client/ui` support.
 
 ## Install
 
