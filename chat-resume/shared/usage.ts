@@ -18,6 +18,9 @@ const CONTEXT_LIMIT_PATTERN = /(?:context|input|output).{0,24}(?:length|window|t
 export const CONTINUE_PROMPT =
   "The provider token allowance should now be renewed. Continue the unfinished work from the previous turn. Review the latest conversation and workspace state before acting.";
 
+/** Provider notices are short. Longer text that merely quotes a limit is not a quota stop. */
+export const USAGE_NOTICE_MAX_CHARS = 800;
+
 export function isUsageExhaustedError(error: string | null | undefined): error is string {
   if (!error || CONTEXT_LIMIT_PATTERN.test(error)) return false;
   return EXHAUSTED_PATTERNS.some((pattern) => pattern.test(error));
@@ -46,6 +49,8 @@ const UNIT_MS: Record<string, number> = {
 export interface UsageSource {
   text: string | null | undefined;
   observedAt: string | Date;
+  /** When set, skip texts longer than this even if they mention a usage limit. */
+  maxChars?: number;
 }
 
 export interface UsageMatch {
@@ -66,6 +71,7 @@ export function usageFromSources(sources: readonly UsageSource[]): UsageMatch {
   let resetAt: Date | null = null;
   for (const source of sources) {
     if (!isUsageExhaustedError(source.text)) continue;
+    if (source.maxChars !== undefined && source.text.trim().length > source.maxChars) continue;
     exhausted = true;
     const next = usageResetAt(source.text, source.observedAt);
     if (next && !resetAt) resetAt = next;

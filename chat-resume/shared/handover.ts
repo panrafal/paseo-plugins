@@ -1,5 +1,36 @@
 export const HANDOVER_SOURCE_LABEL = "chat-resume.source-agent";
 
+/** Prefer these over ACP catalog fillers when handing over from an exhausted provider. */
+export const HANDOVER_PROVIDER_ORDER = [
+  "claude",
+  "codex",
+  "cursor",
+  "opencode",
+  "copilot",
+  "gemini",
+] as const;
+
+export function nextReadyProvider<T extends { provider: string; status: string; enabled: boolean }>(
+  entries: readonly T[],
+  currentProvider: string,
+): T | null {
+  const ready = entries.filter(
+    (entry) => entry.enabled && entry.status === "ready" && entry.provider !== currentProvider,
+  );
+  if (ready.length === 0) return null;
+  for (const provider of HANDOVER_PROVIDER_ORDER) {
+    const match = ready.find((entry) => entry.provider === provider);
+    if (match) return match;
+  }
+  const currentIndex = entries.findIndex((entry) => entry.provider === currentProvider);
+  for (let offset = 1; offset <= entries.length; offset += 1) {
+    const index = currentIndex < 0 ? offset - 1 : (currentIndex + offset) % entries.length;
+    const entry = entries[index];
+    if (entry && ready.includes(entry)) return entry;
+  }
+  return ready[0] ?? null;
+}
+
 export interface SelectOption {
   id: string;
   label: string;

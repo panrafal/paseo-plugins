@@ -1,6 +1,6 @@
 import type { PaseoAgent, PaseoApi } from "@getpaseo/client";
 import type { AgentTimelineItem } from "@getpaseo/protocol/agent-types";
-import { usageFromSources, type UsageMatch } from "../shared/usage";
+import { USAGE_NOTICE_MAX_CHARS, usageFromSources, type UsageMatch, type UsageSource } from "../shared/usage";
 import { lastAssistantMessage } from "./transcript-tail";
 
 const INSPECT_CONCURRENCY = 8;
@@ -61,16 +61,18 @@ export async function inspectAgent(agent: PaseoAgent): Promise<UsageInspection> 
   const cached = turnOutput.get(agent.id);
 
   if (transcript) {
-    const sources = [{ text: transcript.text, observedAt: transcript.observedAt }];
+    const sources: UsageSource[] = [
+      { text: transcript.text, observedAt: transcript.observedAt, maxChars: USAGE_NOTICE_MAX_CHARS },
+    ];
     if (agent.status === "error" && errorText) {
       sources.push({ text: errorText, observedAt: agent.updatedAt });
     }
     return toInspection(agent.id, usageFromSources(sources));
   }
 
-  const sources = [];
+  const sources: UsageSource[] = [];
   if (errorText) sources.push({ text: errorText, observedAt: agent.updatedAt });
-  if (cached) sources.push(cached);
+  if (cached) sources.push({ ...cached, maxChars: USAGE_NOTICE_MAX_CHARS });
   return toInspection(agent.id, usageFromSources(sources));
 }
 

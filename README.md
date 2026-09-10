@@ -115,8 +115,8 @@ editor** in the Command Center. Settings live under
 ### Chat resume
 
 [`chat-resume`](./chat-resume) — pills on quota-exhausted agents: continue now if the allowance
-has already renewed, schedule one resume after renewal, or prepare an editable handover to the
-next ready provider.
+has already renewed, schedule one resume after renewal, or prepare an editable handover to
+Claude, Codex, Cursor, or another ready provider **in the same workspace**.
 
 No settings screen, and no screenshot here: the pills appear when the latest idle or error
 state is a usage-limit / quota exhaustion, including when you reopen the thread later. The

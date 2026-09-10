@@ -3,6 +3,7 @@ import { test } from "node:test";
 import {
   isUsageExhaustedError,
   resumeAction,
+  USAGE_NOTICE_MAX_CHARS,
   usageFromSources,
   usageResetAt,
 } from "./usage";
@@ -47,4 +48,13 @@ test("usageFromSources prefers the first parseable reset among exhausted texts",
   ]);
   assert.equal(match.exhausted, true);
   assert.equal(match.resetAt?.toISOString(), "2026-09-10T22:00:00.000Z");
+});
+
+test("ignores long replies that only quote a usage-limit notice", () => {
+  const quoted = `${"Here is what the other agent said.\n".repeat(40)}\n${CLAUDE_MONTHLY}`;
+  assert.equal(quoted.length > USAGE_NOTICE_MAX_CHARS, true);
+  const match = usageFromSources([
+    { text: quoted, observedAt: "2026-09-10T20:18:39.177Z", maxChars: USAGE_NOTICE_MAX_CHARS },
+  ]);
+  assert.equal(match.exhausted, false);
 });

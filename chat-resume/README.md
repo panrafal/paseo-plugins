@@ -12,14 +12,14 @@ line in the transcript, both live and when you reopen the thread later.
 - **Resume when renewed** creates one heartbeat with `maxRuns: 1`. Shown while the renewal
   time is still in the future. It runs two minutes after renewal and continues the same
   agent. Once that time arrives, the pill becomes **Continue**.
-- **Handover** re-fetches the source agent, selects the next enabled, ready provider, and
-  creates an idle agent in the same workspace. It carries across the closest planning mode
-  and thinking level, then opens an editable handover draft with commands for recovering
-  the source chat through the `paseo` CLI.
+- **Handover** creates an idle agent **in the same workspace**, preferring Claude, Codex,
+  Cursor, OpenCode, Copilot, or Gemini when those are ready, then opens an editable draft
+  with commands for recovering the source chat through the `paseo` CLI.
 
 The public plugin API does not expose the native composer draft, so the handover draft is
-hosted in an agent-scoped plugin panel. The new agent does not start until **Start agent**
-is pressed.
+hosted in an agent-scoped plugin panel. `paseo.agents.create({ cwd })` always opens a new
+workspace; handover therefore uses `workspaces.ref(id).agents.create` so the new agent stays
+in the thread you are looking at. It does not start until **Start agent** is pressed.
 
 Provider renewal windows are not currently exposed through the public plugin API. The
 plugin reads the latest refreshed agent error and the last transcript assistant message

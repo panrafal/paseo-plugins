@@ -14,16 +14,33 @@ export function HandoverDraftPanel({ agentId, navigation, theme }: PluginAgentPa
     sourceAgentId: agent.labels[HANDOVER_SOURCE_LABEL] ?? null,
   }));
   const sourceAgentId = target?.sourceAgentId ?? null;
-  const [draft, setDraft] = useState(() =>
-    sourceAgentId ? buildHandoverPrompt(sourceAgentId) : "",
-  );
+  const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (sourceAgentId) setDraft(buildHandoverPrompt(sourceAgentId));
-  }, [sourceAgentId]);
+    if (sourceAgentId) {
+      setError(null);
+      setDraft((current) => current || buildHandoverPrompt(sourceAgentId));
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const refreshed = await paseo.agents.ref(agentId).refresh();
+        const sourceId = refreshed?.agent.labels?.[HANDOVER_SOURCE_LABEL] ?? null;
+        if (cancelled) return;
+        if (sourceId) setDraft((current) => current || buildHandoverPrompt(sourceId));
+        else setError("This agent is missing its handover source label.");
+      } catch (cause) {
+        if (!cancelled) setError(cause instanceof Error ? cause.message : String(cause));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [agentId, paseo, sourceAgentId]);
 
   const colors = theme.colors;
   const inputStyle = useMemo(
@@ -58,7 +75,8 @@ export function HandoverDraftPanel({ agentId, navigation, theme }: PluginAgentPa
     <View style={[styles.container, { backgroundColor: colors.surface0 }]}>
       <Text style={[styles.title, { color: colors.foreground }]}>Handover draft</Text>
       <Text style={[styles.help, { color: colors.foregroundMuted }]}>
-        Review this prompt before starting the new {target?.provider ?? "provider"} agent.
+        Review this prompt before starting the new {target?.provider ?? "provider"} agent. It stays
+        idle until you press Start agent.
       </Text>
       <TextInput
         accessibilityLabel="Handover prompt"

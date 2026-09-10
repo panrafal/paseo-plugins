@@ -3,6 +3,7 @@ import type { PaseoAgent, PaseoApi } from "@getpaseo/client";
 import { inspectUsageRpc, scheduleResumeRpc } from "../shared/contracts";
 import {
   HANDOVER_SOURCE_LABEL,
+  nextReadyProvider,
   similarMode,
   similarThinkingOption,
 } from "../shared/handover";
@@ -29,20 +30,6 @@ interface AgentPills {
 interface UsageInspection {
   exhausted: boolean;
   resetAt: string | null;
-}
-
-function nextReadyProvider<T extends { provider: string; status: string; enabled: boolean }>(
-  entries: readonly T[],
-  currentProvider: string,
-): T | null {
-  if (entries.length === 0) return null;
-  const currentIndex = entries.findIndex((entry) => entry.provider === currentProvider);
-  for (let offset = 1; offset <= entries.length; offset += 1) {
-    const index = currentIndex < 0 ? offset - 1 : (currentIndex + offset) % entries.length;
-    const entry = entries[index];
-    if (entry.enabled && entry.status === "ready" && entry.provider !== currentProvider) return entry;
-  }
-  return null;
 }
 
 async function createHandoverAgent(client: PluginClientContext, sourceAgentId: string) {
@@ -76,21 +63,27 @@ async function createHandoverAgent(client: PluginClientContext, sourceAgentId: s
     model.thinkingOptions ?? [],
   ) ?? model.defaultThinkingOptionId;
 
-  const target = await client.paseo.agents.create({
+  const target = await client.paseo.workspaces.ref(source.workspaceId).agents.create({
     config: {
       provider: `${provider.provider}/${model.id}`,
       ...(modeId ? { modeId } : {}),
       ...(thinkingOptionId ? { thinkingOptionId } : {}),
     },
-    cwd: source.cwd,
     title: `Handover: ${source.title ?? source.id.slice(0, 7)}`,
     labels: { [HANDOVER_SOURCE_LABEL]: source.id },
   });
-  client.openPanel(HANDOVER_PANEL_ID, {
-    workspaceId: source.workspaceId,
-    agentId: target.id,
-    location: "workspace",
-  });
+  const created = target.current() ?? (await target.refresh())?.agent;
+  const workspaceId = created?.workspaceId ?? target.workspaceId ?? source.workspaceId;
+  if (!workspaceId) throw new Error("The handover agent was created without a workspace.");
+  try {
+    client.openPanel(HANDOVER_PANEL_ID, {
+      workspaceId,
+      agentId: target.id,
+      location: "workspace",
+    });
+  } catch (error) {
+    console.error("[chat-resume] handover agent created but the draft panel did not open", target.id, error);
+  }
   return target.id;
 }
 
