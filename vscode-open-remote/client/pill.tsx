@@ -1,11 +1,11 @@
 import {
+  type PluginButtonIconProps,
   type PluginClientContext,
-  type PluginComposerPillProps,
 } from "@getpaseo/plugin/client";
 import { Icon } from "@getpaseo/plugin/client/react-native";
 import type { PaseoAgent } from "@getpaseo/client";
 import React, { useEffect } from "react";
-import { Dimensions, Linking, Platform, Text } from "react-native";
+import { Dimensions, Linking, Platform } from "react-native";
 import { getEditorSettings } from "../shared/settings";
 import { isMobileBrowser, isMobileLayout, remoteEditorUrl } from "../shared/url";
 
@@ -66,14 +66,18 @@ type RenderedTarget = {
   mobile: boolean;
 };
 
-function RemoteEditorPill({
-  theme,
+/**
+ * Paseo renders the pill chrome and its label; the plugin only supplies the
+ * icon. The headless client entrypoint does not receive host or layout
+ * metadata, so this icon keeps the latest values for the press callback.
+ */
+function RemoteEditorIcon({
   host,
   layout,
+  size,
+  color,
   target,
-}: PluginComposerPillProps & { target: RenderedTarget }) {
-  // The headless client entrypoint does not receive host or layout metadata.
-  // The rendered pill does, so keep the latest values for its press callback.
+}: PluginButtonIconProps & { target: RenderedTarget }) {
   useEffect(() => {
     target.hostName = host.label;
     target.mobile = isMobileLayout(layout);
@@ -82,14 +86,7 @@ function RemoteEditorPill({
     };
   }, [host.label, layout, target]);
 
-  return (
-    <>
-      <Icon name="SquareCode" size={14} color={theme.colors.foregroundMuted} />
-      <Text numberOfLines={1} style={{ color: theme.colors.foregroundMuted, flexShrink: 1 }}>
-        Editor
-      </Text>
-    </>
-  );
+  return <Icon name="SquareCode" size={size} color={color} />;
 }
 
 type AgentPill = {
@@ -131,35 +128,41 @@ export function contributeClient(client: PluginClientContext) {
     remove(agent.id);
 
     const target: RenderedTarget = { hostName: null, mobile: false };
-    const Component = (props: PluginComposerPillProps) => (
-      <RemoteEditorPill {...props} target={target} />
+    const PillIcon = (props: PluginButtonIconProps) => (
+      <RemoteEditorIcon {...props} target={target} />
     );
     const { id: agentId, workspaceId, cwd } = agent;
-    const removePill = client.addComposerPill({
+    const registration = client.addComposerPill({
       id: "open-remote-editor",
-      title: "Open this agent directory in the remote editor",
       workspaceId,
       agentId,
-      Component,
-      async onPress() {
-        if (!target.hostName) throw new Error("The Paseo host name is not available yet.");
-        const settings = await client.rpc(getEditorSettings, {});
-        await openExternalUrl(
-          remoteEditorUrl({
-            settings,
-            hostName: target.hostName,
-            directory: cwd,
-            mobile: target.mobile,
-          }),
-          target.mobile,
-        );
+      button: {
+        title: "Open this agent directory in the remote editor",
+        icon: PillIcon,
+        label: "Editor",
+        behavior: {
+          kind: "action",
+          async onPress() {
+            if (!target.hostName) throw new Error("The Paseo host name is not available yet.");
+            const settings = await client.rpc(getEditorSettings, {});
+            await openExternalUrl(
+              remoteEditorUrl({
+                settings,
+                hostName: target.hostName,
+                directory: cwd,
+                mobile: target.mobile,
+              }),
+              target.mobile,
+            );
+          },
+        },
       },
     });
     pills.set(agent.id, {
       workspaceId,
       cwd,
       updatedAt: agent.updatedAt,
-      remove: removePill,
+      remove: () => registration.remove(),
     });
   }
 

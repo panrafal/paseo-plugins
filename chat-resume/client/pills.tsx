@@ -1,11 +1,5 @@
-import {
-  type PluginClientContext,
-  type PluginComposerPillProps,
-} from "@getpaseo/plugin/client";
-import { Icon } from "@getpaseo/plugin/client/react-native";
+import { type PluginClientContext } from "@getpaseo/plugin/client";
 import type { PaseoAgent, PaseoApi } from "@getpaseo/client";
-import React from "react";
-import { Text } from "react-native";
 import { scheduleResumeRpc } from "../shared/contracts";
 import {
   HANDOVER_SOURCE_LABEL,
@@ -17,17 +11,6 @@ import { isUsageExhaustedError, usageResetAt } from "../shared/usage";
 const AGENT_PAGE_SIZE = 200;
 const AGENT_SUBSCRIPTION_ID = "chat-resume-agents";
 const HANDOVER_PANEL_ID = "handover-draft";
-
-function Pill({ icon, label, theme }: PluginComposerPillProps & { icon: string; label: string }) {
-  return (
-    <>
-      <Icon name={icon} size={14} color={theme.colors.foregroundMuted} />
-      <Text numberOfLines={1} style={{ color: theme.colors.foregroundMuted, flexShrink: 1 }}>
-        {label}
-      </Text>
-    </>
-  );
-}
 
 interface RegisteredPill {
   workspaceId: string;
@@ -133,32 +116,39 @@ export function contributePills(client: PluginClientContext) {
     if (existing?.signature === signature) return;
     removePill(agent.id, "resume");
 
-    const Component = (props: PluginComposerPillProps) => (
-      <Pill {...props} icon="RotateCcw" label="Resume when renewed" />
-    );
-    const remove = client.addComposerPill({
+    const registration = client.addComposerPill({
       id: "resume-after-renewal",
-      title: `Schedule one resume heartbeat for ${resetAt.toLocaleString()}`,
       workspaceId: agent.workspaceId,
       agentId: agent.id,
-      Component,
-      async onPress() {
-        if (resumePending.has(agent.id)) return;
-        resumePending.add(agent.id);
-        try {
-          await client.rpc(scheduleResumeRpc, { agentId: agent.id });
-          resumeScheduled.add(agent.id);
-          removePill(agent.id, "resume");
-        } catch (error) {
-          console.error("[chat-resume] could not schedule resume", agent.id, error);
-          throw error;
-        } finally {
-          resumePending.delete(agent.id);
-        }
+      button: {
+        title: `Schedule one resume heartbeat for ${resetAt.toLocaleString()}`,
+        icon: "RotateCcw",
+        label: "Resume when renewed",
+        behavior: {
+          kind: "action",
+          async onPress() {
+            if (resumePending.has(agent.id)) return;
+            resumePending.add(agent.id);
+            try {
+              await client.rpc(scheduleResumeRpc, { agentId: agent.id });
+              resumeScheduled.add(agent.id);
+              removePill(agent.id, "resume");
+            } catch (error) {
+              console.error("[chat-resume] could not schedule resume", agent.id, error);
+              throw error;
+            } finally {
+              resumePending.delete(agent.id);
+            }
+          },
+        },
       },
     });
     const state = pills.get(agent.id) ?? {};
-    state.resume = { workspaceId: agent.workspaceId, signature, remove };
+    state.resume = {
+      workspaceId: agent.workspaceId,
+      signature,
+      remove: () => registration.remove(),
+    };
     pills.set(agent.id, state);
   }
 
@@ -172,32 +162,39 @@ export function contributePills(client: PluginClientContext) {
     if (existing?.signature === signature) return;
     removePill(agent.id, "handover");
 
-    const Component = (props: PluginComposerPillProps) => (
-      <Pill {...props} icon="ArrowRightLeft" label="Handover" />
-    );
-    const remove = client.addComposerPill({
+    const registration = client.addComposerPill({
       id: "handover-provider",
-      title: "Prepare a handover on the next ready provider",
       workspaceId: agent.workspaceId,
       agentId: agent.id,
-      Component,
-      async onPress() {
-        if (handoverPending.has(agent.id)) return;
-        handoverPending.add(agent.id);
-        try {
-          const targetId = await createHandoverAgent(client, agent.id);
-          handoverTargets.set(agent.id, targetId);
-          removePill(agent.id, "handover");
-        } catch (error) {
-          console.error("[chat-resume] could not prepare handover", agent.id, error);
-          throw error;
-        } finally {
-          handoverPending.delete(agent.id);
-        }
+      button: {
+        title: "Prepare a handover on the next ready provider",
+        icon: "ArrowRightLeft",
+        label: "Handover",
+        behavior: {
+          kind: "action",
+          async onPress() {
+            if (handoverPending.has(agent.id)) return;
+            handoverPending.add(agent.id);
+            try {
+              const targetId = await createHandoverAgent(client, agent.id);
+              handoverTargets.set(agent.id, targetId);
+              removePill(agent.id, "handover");
+            } catch (error) {
+              console.error("[chat-resume] could not prepare handover", agent.id, error);
+              throw error;
+            } finally {
+              handoverPending.delete(agent.id);
+            }
+          },
+        },
       },
     });
     const state = pills.get(agent.id) ?? {};
-    state.handover = { workspaceId: agent.workspaceId, signature, remove };
+    state.handover = {
+      workspaceId: agent.workspaceId,
+      signature,
+      remove: () => registration.remove(),
+    };
     pills.set(agent.id, state);
   }
 

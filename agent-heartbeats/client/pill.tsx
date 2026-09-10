@@ -1,24 +1,35 @@
 import type { PaseoAgent } from "@getpaseo/client";
-import type { PluginClientContext, PluginComposerPillProps } from "@getpaseo/plugin/client";
+import type {
+  PluginButtonIconProps,
+  PluginButtonRegistration,
+  PluginClientContext,
+} from "@getpaseo/plugin/client";
 import { Icon } from "@getpaseo/plugin/client/react-native";
-import { Text } from "react-native";
+import { useEffect } from "react";
 import { useHeartbeats } from "./use-heartbeats";
 
 const AGENT_PAGE_SIZE = 200;
 const AGENT_SUBSCRIPTION_ID = "agent-heartbeats-agents";
 export const HEARTBEATS_PANEL_ID = "heartbeats";
 
-function HeartbeatPill({ theme, host, agentId }: PluginComposerPillProps) {
+/**
+ * Paseo renders the pill chrome and its label, so the count reaches the label
+ * through the registration. The icon mounts only while the pill is on screen,
+ * which keeps the heartbeat poll scoped to the visible agent.
+ */
+function HeartbeatIcon({
+  host,
+  agentId,
+  size,
+  color,
+  onCount,
+}: PluginButtonIconProps & { agentId: string; onCount: (count: number) => void }) {
   const { query } = useHeartbeats(host.id, agentId);
-  const count = query.data?.heartbeats.length ?? 0;
-  return (
-    <>
-      <Icon name="HeartPulse" size={14} color={theme.colors.foregroundMuted} />
-      <Text style={{ color: theme.colors.foregroundMuted, fontVariant: ["tabular-nums"] }}>
-        {count}
-      </Text>
-    </>
-  );
+  const count = query.data?.heartbeats.length;
+  useEffect(() => {
+    if (count !== undefined) onCount(count);
+  }, [count, onCount]);
+  return <Icon name="HeartPulse" size={size} color={color} />;
 }
 
 interface RegisteredPill {
@@ -44,19 +55,33 @@ export function contributePills(client: PluginClientContext) {
     if (existing?.workspaceId === agent.workspaceId) return;
     remove(agent.id);
     const { id: agentId, workspaceId } = agent;
-    pills.set(agentId, {
+    let registration: PluginButtonRegistration | null = null;
+    let label = "0";
+    // Stable across renders so the icon's effect only fires when the count moves.
+    const report = (count: number) => {
+      const next = String(count);
+      if (next === label) return;
+      label = next;
+      registration?.update({ label: next });
+    };
+    registration = client.addComposerPill({
+      id: "heartbeats",
       workspaceId,
-      remove: client.addComposerPill({
-        id: "heartbeats",
+      agentId,
+      button: {
         title: "Manage this agent's heartbeats",
-        workspaceId,
-        agentId,
-        Component: HeartbeatPill,
-        onPress() {
-          client.openPanel(HEARTBEATS_PANEL_ID, { workspaceId, agentId });
+        icon: (props) => <HeartbeatIcon {...props} agentId={agentId} onCount={report} />,
+        label,
+        behavior: {
+          kind: "action",
+          onPress() {
+            client.openPanel(HEARTBEATS_PANEL_ID, { workspaceId, agentId });
+          },
         },
-      }),
+      },
     });
+    const current = registration;
+    pills.set(agentId, { workspaceId, remove: () => current.remove() });
   }
 
   const unsubscribe = client.paseo.agents.subscribe((update) => {

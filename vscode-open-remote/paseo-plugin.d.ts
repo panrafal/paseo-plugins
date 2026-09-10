@@ -201,18 +201,59 @@ declare module "@getpaseo/plugin/client" {
     agentId: string;
   }
 
-  export interface PluginComposerPillProps extends PluginHostProps {
-    workspaceId: string;
-    agentId: string;
+  export type PluginButtonContext =
+    | { context: "workspace"; workspaceId: string }
+    | { context: "agent"; workspaceId: string; agentId: string };
+
+  export type PluginButtonIconProps = PluginHostProps &
+    PluginButtonContext & { size: number; color: string };
+
+  export type PluginButtonContentProps = PluginHostProps & PluginButtonContext & { close(): void };
+
+  export type PluginButtonIcon = string | ComponentType<PluginButtonIconProps>;
+
+  export type PluginButtonBehavior =
+    | { kind: "action"; onPress(): void | Promise<void> }
+    | { kind: "menu"; items: readonly PluginButtonMenuEntry[] }
+    | { kind: "popover"; Content: ComponentType<PluginButtonContentProps> };
+
+  export type PluginButtonMenuEntry =
+    | { kind: "separator"; id: string }
+    | {
+        kind: "item";
+        id: string;
+        title: string;
+        icon?: PluginButtonIcon;
+        visible?: boolean;
+        disabled?: boolean;
+        behavior: PluginButtonBehavior;
+      };
+
+  export interface PluginButton {
+    title: string;
+    icon: PluginButtonIcon;
+    /** Omit for an icon-only header button. Composer pills use title when omitted. */
+    label?: string;
+    visible?: boolean;
+    disabled?: boolean;
+    behavior: PluginButtonBehavior;
   }
 
-  export interface PluginComposerPillContribution {
+  export interface PluginButtonRegistration {
+    /** Updates presentation in place. Supply a complete behavior to replace it. */
+    update(patch: Partial<PluginButton>): void;
+    /** Idempotent. Updates after removal do nothing. */
+    remove(): void;
+  }
+
+  export interface PluginHeaderButtonContribution {
     id: string;
-    title: string;
     workspaceId: string;
+    button: PluginButton;
+  }
+
+  export interface PluginComposerPillContribution extends PluginHeaderButtonContribution {
     agentId: string;
-    Component: ComponentType<PluginComposerPillProps>;
-    onPress(): void | Promise<void>;
   }
 
   export type PluginPanelLocation = "workspace" | "explorer";
@@ -344,7 +385,8 @@ declare module "@getpaseo/plugin/client" {
     addWorkspacePanel(contribution: PluginWorkspacePanelContribution): PluginCleanup;
     addCommandCenterItem(contribution: PluginCommandCenterItemContribution): PluginCleanup;
     addSlashCommand(contribution: PluginClientSlashCommandContribution): PluginCleanup;
-    addComposerPill(contribution: PluginComposerPillContribution): PluginCleanup;
+    addHeaderButton(contribution: PluginHeaderButtonContribution): PluginButtonRegistration;
+    addComposerPill(contribution: PluginComposerPillContribution): PluginButtonRegistration;
     addAttachmentSource(contribution: PluginAttachmentSourceContribution): PluginCleanup;
     addTheme(contribution: PluginThemeContribution): PluginCleanup;
     addTimelineTransformer<ItemType extends AgentTimelineItem["type"]>(

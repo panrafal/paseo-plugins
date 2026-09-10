@@ -1,11 +1,7 @@
-import {
-  type PluginClientContext,
-  type PluginComposerPillProps,
-} from "@getpaseo/plugin/client";
-import { Icon } from "@getpaseo/plugin/client/react-native";
+import { type PluginClientContext } from "@getpaseo/plugin/client";
 import type { PaseoAgent, PaseoWorkspace } from "@getpaseo/client";
-import React, { useMemo } from "react";
-import { Linking, Text } from "react-native";
+import React from "react";
+import { Linking } from "react-native";
 import { getBranch } from "../shared/task";
 import { findTaskIn, taskUrl, type TaskLinkSettings } from "../shared/link";
 import { getTaskLinkSettings } from "../shared/settings";
@@ -15,25 +11,6 @@ import { openDesktopUrl } from "./web";
 const AGENT_PAGE_SIZE = 200;
 const AGENT_SUBSCRIPTION_ID = "task-link-agents";
 const WORKSPACE_SUBSCRIPTION_ID = "task-link-workspaces";
-
-/**
- * Paseo owns the pressable and the pill chrome; this renders only the icon and
- * the task number inside it.
- */
-function TaskPill({ theme, task }: PluginComposerPillProps & { task: string }) {
-  const style = useMemo(
-    () => ({ color: theme.colors.foregroundMuted, flexShrink: 1 }),
-    [theme],
-  );
-  return (
-    <>
-      <Icon name="SquareKanban" size={14} color={theme.colors.foregroundMuted} />
-      <Text numberOfLines={1} style={style}>
-        {task}
-      </Text>
-    </>
-  );
-}
 
 async function openExternalUrl(url: string): Promise<void> {
   if (await openDesktopUrl(url)) return;
@@ -134,23 +111,29 @@ export function contributeClient(client: PluginClientContext) {
     dropPill(state);
     if (!task || !url) return;
     const { workspaceId } = state;
-    const Component = (props: PluginComposerPillProps) => <TaskPill {...props} task={task} />;
     state.task = task;
     state.url = url;
-    state.removePill = client.addComposerPill({
+    const registration = client.addComposerPill({
       id: "task-link",
-      title: `Open task ${task}`,
       workspaceId,
       agentId,
-      Component,
-      async onPress() {
-        // Read on press as well so another client's save cannot open a stale link.
-        const next = await client.rpc(getTaskLinkSettings, {});
-        applySettings(next);
-        const current = agents.get(agentId);
-        if (!stopped && current?.url) await openExternalUrl(current.url);
+      button: {
+        title: `Open task ${task}`,
+        icon: "SquareKanban",
+        label: task,
+        behavior: {
+          kind: "action",
+          async onPress() {
+            // Read on press as well so another client's save cannot open a stale link.
+            const next = await client.rpc(getTaskLinkSettings, {});
+            applySettings(next);
+            const current = agents.get(agentId);
+            if (!stopped && current?.url) await openExternalUrl(current.url);
+          },
+        },
       },
     });
+    state.removePill = () => registration.remove();
   }
 
   function syncDirectory(directory: string) {
