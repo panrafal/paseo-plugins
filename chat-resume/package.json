@@ -2,9 +2,10 @@
   "name": "chat-resume",
   "private": true,
   "version": "0.1.0",
-  "description": "Composer pills that resume a quota-exhausted agent after allowance renewal or prepare a handover to another provider.",
+  "description": "Composer pills that continue a quota-exhausted agent now, resume after allowance renewal, or prepare a handover to another provider.",
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test --test-isolation=none shared/*.test.ts server/*.test.ts"
   },
   "devDependencies": {
     "@getpaseo/client": "^0.7.1",
@@ -14,6 +15,7 @@
     "@types/react": "~19.2.0",
     "react": "19.1.0",
     "react-native": "0.81.5",
+    "tsx": "^4.20.6",
     "typescript": "^5.9.3",
     "zod": "^4.4.3"
   },

@@ -527,8 +527,46 @@ declare module "@getpaseo/plugin/server" {
     paseo: PaseoApi;
   }
 
+  export interface PluginHookAgent {
+    id: string;
+    workspaceId: string | null;
+    parentAgentId: string | null;
+    provider: string;
+    cwd: string;
+    title: string | null;
+  }
+
+  export type PluginTurnOutcome =
+    | { kind: "completed" }
+    | { kind: "failed"; error: { message: string; code?: string } }
+    | { kind: "canceled"; reason: string };
+
+  export interface PluginLifecycleEvents {
+    "agent.created": { agent: PluginHookAgent };
+    "agent.turn_started": { agent: PluginHookAgent; turnId: string | null };
+    "agent.turn_ended": {
+      agent: PluginHookAgent;
+      turnId: string | null;
+      outcome: PluginTurnOutcome;
+      timeline: readonly import("@getpaseo/protocol/agent-types").AgentTimelineItem[];
+    };
+    "agent.archived": { agent: PluginHookAgent; archivedAt: string };
+  }
+
+  export interface PluginHookContext {
+    paseo: PaseoApi;
+    signal: AbortSignal;
+  }
+
   /** The daemon-side entry context. */
   export interface PluginServerContext {
+    on<Name extends keyof PluginLifecycleEvents>(
+      name: Name,
+      handler: (
+        event: PluginLifecycleEvents[Name],
+        context: PluginHookContext,
+      ) => void | Promise<void>,
+    ): () => void;
     handle<InputSchema extends ZodType, OutputSchema extends ZodType>(
       contract: PluginRpcContract<InputSchema, OutputSchema>,
       handler: (

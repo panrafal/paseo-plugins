@@ -114,12 +114,13 @@ editor** in the Command Center. Settings live under
 
 ### Chat resume
 
-[`chat-resume`](./chat-resume) — pills on quota-exhausted agents: schedule one resume after allowance
-renewal, or prepare an editable handover to the next ready provider.
+[`chat-resume`](./chat-resume) — pills on quota-exhausted agents: continue now if the allowance
+has already renewed, schedule one resume after renewal, or prepare an editable handover to the
+next ready provider.
 
-No settings screen, and no screenshot here: the pills only appear when the latest agent error is a
-usage-limit / quota exhaustion. The handover draft is an agent panel; the new agent does not start
-until **Start agent** is pressed.
+No settings screen, and no screenshot here: the pills appear when the latest idle or error
+state is a usage-limit / quota exhaustion, including when you reopen the thread later. The
+handover draft is an agent panel; the new agent does not start until **Start agent** is pressed.
 
 ## Development
 

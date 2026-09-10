@@ -1,16 +1,19 @@
 import { type PluginClientContext } from "@getpaseo/plugin/client";
 import type { PaseoAgent, PaseoApi } from "@getpaseo/client";
-import { scheduleResumeRpc } from "../shared/contracts";
+import { inspectUsageRpc, scheduleResumeRpc } from "../shared/contracts";
 import {
   HANDOVER_SOURCE_LABEL,
   similarMode,
   similarThinkingOption,
 } from "../shared/handover";
-import { isUsageExhaustedError, usageResetAt } from "../shared/usage";
+import { CONTINUE_PROMPT, resumeAction, type ResumeAction } from "../shared/usage";
 
 const AGENT_PAGE_SIZE = 200;
 const AGENT_SUBSCRIPTION_ID = "chat-resume-agents";
 const HANDOVER_PANEL_ID = "handover-draft";
+const INSPECT_BATCH = 200;
+const FLUSH_DELAY_MS = 16;
+const RETRY_DELAY_MS = 800;
 
 interface RegisteredPill {
   workspaceId: string;
@@ -21,6 +24,11 @@ interface RegisteredPill {
 interface AgentPills {
   resume?: RegisteredPill;
   handover?: RegisteredPill;
+}
+
+interface UsageInspection {
+  exhausted: boolean;
+  resetAt: string | null;
 }
 
 function nextReadyProvider<T extends { provider: string; status: string; enabled: boolean }>(
@@ -41,7 +49,8 @@ async function createHandoverAgent(client: PluginClientContext, sourceAgentId: s
   const refreshed = await client.paseo.agents.ref(sourceAgentId).refresh();
   const source = refreshed?.agent;
   if (!source || !source.workspaceId) throw new Error(`Agent not found: ${sourceAgentId}`);
-  if (source.status !== "error" || !isUsageExhaustedError(source.lastError)) {
+  const inspection = await client.rpc(inspectUsageRpc, { agentIds: [sourceAgentId] });
+  if (!inspection.inspections[0]?.exhausted) {
     throw new Error("The agent's latest failure is no longer a usage-limit failure.");
   }
 
@@ -85,13 +94,24 @@ async function createHandoverAgent(client: PluginClientContext, sourceAgentId: s
   return target.id;
 }
 
+function canShowPills(agent: PaseoAgent): boolean {
+  return Boolean(agent.workspaceId) && !agent.archivedAt && (agent.status === "idle" || agent.status === "error");
+}
+
 export function contributePills(client: PluginClientContext) {
   const agents = new Map<string, PaseoAgent>();
   const pills = new Map<string, AgentPills>();
+  const inspections = new Map<string, UsageInspection>();
   const resumeScheduled = new Set<string>();
   const handoverTargets = new Map<string, string>();
   const resumePending = new Set<string>();
   const handoverPending = new Set<string>();
+  const inspectQueued = new Set<string>();
+  const retried = new Set<string>();
+  const pendingRetry = new Set<string>();
+  const flipTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  let flushTimer: ReturnType<typeof setTimeout> | null = null;
+  let inspecting = false;
   let stopped = false;
 
   function removePill(agentId: string, kind: keyof AgentPills) {
@@ -102,39 +122,71 @@ export function contributePills(client: PluginClientContext) {
   }
 
   function removeAll(agentId: string) {
+    const flip = flipTimers.get(agentId);
+    if (flip) {
+      clearTimeout(flip);
+      flipTimers.delete(agentId);
+    }
     removePill(agentId, "resume");
     removePill(agentId, "handover");
   }
 
-  function registerResume(agent: PaseoAgent, resetAt: Date) {
+  function armFlip(agentId: string, resetAt: Date | null) {
+    const existing = flipTimers.get(agentId);
+    if (existing) {
+      clearTimeout(existing);
+      flipTimers.delete(agentId);
+    }
+    if (!resetAt) return;
+    const delay = resetAt.getTime() - Date.now();
+    if (delay <= 0) return;
+    flipTimers.set(
+      agentId,
+      setTimeout(() => {
+        flipTimers.delete(agentId);
+        const agent = agents.get(agentId);
+        if (agent) sync(agent);
+      }, Math.min(delay + 100, 2_147_000_000)),
+    );
+  }
+
+  function registerResume(agent: PaseoAgent, action: ResumeAction, resetAt: Date | null) {
     if (!agent.workspaceId || resumeScheduled.has(agent.id)) {
       removePill(agent.id, "resume");
       return;
     }
-    const signature = `${agent.workspaceId}:${resetAt.toISOString()}`;
+    const signature = `${agent.workspaceId}:${action}:${resetAt?.toISOString() ?? "none"}`;
     const existing = pills.get(agent.id)?.resume;
     if (existing?.signature === signature) return;
     removePill(agent.id, "resume");
 
+    const due = action === "continue";
     const registration = client.addComposerPill({
       id: "resume-after-renewal",
       workspaceId: agent.workspaceId,
       agentId: agent.id,
       button: {
-        title: `Schedule one resume heartbeat for ${resetAt.toLocaleString()}`,
-        icon: "RotateCcw",
-        label: "Resume when renewed",
+        title: due
+          ? "Continue now that the provider allowance should have renewed"
+          : `Schedule one resume heartbeat for ${resetAt?.toLocaleString() ?? "renewal"}`,
+        icon: due ? "Play" : "RotateCcw",
+        label: due ? "Continue" : "Resume when renewed",
         behavior: {
           kind: "action",
           async onPress() {
             if (resumePending.has(agent.id)) return;
             resumePending.add(agent.id);
             try {
-              await client.rpc(scheduleResumeRpc, { agentId: agent.id });
-              resumeScheduled.add(agent.id);
-              removePill(agent.id, "resume");
+              if (due) {
+                await client.paseo.agents.ref(agent.id).send(CONTINUE_PROMPT);
+                removeAll(agent.id);
+              } else {
+                await client.rpc(scheduleResumeRpc, { agentId: agent.id });
+                resumeScheduled.add(agent.id);
+                removePill(agent.id, "resume");
+              }
             } catch (error) {
-              console.error("[chat-resume] could not schedule resume", agent.id, error);
+              console.error("[chat-resume] could not resume", agent.id, error);
               throw error;
             } finally {
               resumePending.delete(agent.id);
@@ -200,19 +252,77 @@ export function contributePills(client: PluginClientContext) {
 
   function sync(agent: PaseoAgent) {
     if (stopped) return;
-    const exhausted =
-      Boolean(agent.workspaceId) && !agent.archivedAt && agent.status === "error" &&
-      isUsageExhaustedError(agent.lastError);
-    if (!exhausted) {
+    if (!canShowPills(agent)) {
       resumeScheduled.delete(agent.id);
       removeAll(agent.id);
       return;
     }
 
-    const resetAt = usageResetAt(agent.lastError, agent.updatedAt);
-    if (resetAt) registerResume(agent, resetAt);
-    else removePill(agent.id, "resume");
+    const inspection = inspections.get(agent.id);
+    if (!inspection) return;
+    if (!inspection.exhausted) {
+      resumeScheduled.delete(agent.id);
+      removeAll(agent.id);
+      return;
+    }
+
+    const resetAt = inspection.resetAt ? new Date(inspection.resetAt) : null;
+    const parsedReset = resetAt && !Number.isNaN(resetAt.getTime()) ? resetAt : null;
+    registerResume(agent, resumeAction(parsedReset), parsedReset);
     registerHandover(agent);
+    armFlip(agent.id, parsedReset);
+  }
+
+  function queueInspect(agent: PaseoAgent, retry = false) {
+    if (stopped || !canShowPills(agent)) {
+      inspections.delete(agent.id);
+      removeAll(agent.id);
+      return;
+    }
+    if (retry) retried.add(agent.id);
+    inspectQueued.add(agent.id);
+    if (flushTimer || inspecting) return;
+    flushTimer = setTimeout(() => {
+      flushTimer = null;
+      void flushInspect();
+    }, FLUSH_DELAY_MS);
+  }
+
+  async function flushInspect() {
+    if (inspecting || stopped) return;
+    const ids = [...inspectQueued];
+    if (ids.length === 0) return;
+    inspectQueued.clear();
+    inspecting = true;
+    try {
+      for (let offset = 0; offset < ids.length; offset += INSPECT_BATCH) {
+        if (stopped) return;
+        const batch = ids.slice(offset, offset + INSPECT_BATCH);
+        const { inspections: rows } = await client.rpc(inspectUsageRpc, { agentIds: batch });
+        for (const row of rows) {
+          inspections.set(row.agentId, { exhausted: row.exhausted, resetAt: row.resetAt });
+          const agent = agents.get(row.agentId);
+          if (!agent) continue;
+          if (inspectQueued.has(agent.id)) continue;
+          sync(agent);
+          const shouldRetry = pendingRetry.has(row.agentId);
+          pendingRetry.delete(row.agentId);
+          if (!row.exhausted && shouldRetry && agent.status === "idle" && !retried.has(agent.id)) {
+            const snapshot = agent;
+            setTimeout(() => {
+              const current = agents.get(snapshot.id);
+              if (!current || current.updatedAt !== snapshot.updatedAt || stopped) return;
+              queueInspect(current, true);
+            }, RETRY_DELAY_MS);
+          }
+        }
+      }
+    } catch (error) {
+      console.error("[chat-resume] could not inspect usage", error);
+    } finally {
+      inspecting = false;
+      if (inspectQueued.size > 0 && !stopped) void flushInspect();
+    }
   }
 
   function upsert(agent: PaseoAgent) {
@@ -232,11 +342,35 @@ export function contributePills(client: PluginClientContext) {
 
     if (!agent.workspaceId || agent.archivedAt) {
       agents.delete(agent.id);
+      inspections.delete(agent.id);
+      retried.delete(agent.id);
+      pendingRetry.delete(agent.id);
       removeAll(agent.id);
       return;
     }
     agents.set(agent.id, agent);
-    sync(agent);
+
+    if (!canShowPills(agent)) {
+      inspections.delete(agent.id);
+      retried.delete(agent.id);
+      pendingRetry.delete(agent.id);
+      removeAll(agent.id);
+      return;
+    }
+
+    const unchanged =
+      previous &&
+      previous.updatedAt === agent.updatedAt &&
+      previous.status === agent.status &&
+      previous.lastError === agent.lastError;
+    if (unchanged && inspections.has(agent.id)) {
+      sync(agent);
+      return;
+    }
+    if (previous && previous.updatedAt !== agent.updatedAt) retried.delete(agent.id);
+    const justFinished = previous?.status === "running" && agent.status === "idle";
+    if (justFinished) pendingRetry.add(agent.id);
+    queueInspect(agent);
   }
 
   const unsubscribe = client.paseo.agents.subscribe((update) => {
@@ -249,6 +383,10 @@ export function contributePills(client: PluginClientContext) {
         if (source) sync(source);
       }
       agents.delete(update.agentId);
+      inspections.delete(update.agentId);
+      retried.delete(update.agentId);
+      pendingRetry.delete(update.agentId);
+      inspectQueued.delete(update.agentId);
       removeAll(update.agentId);
     } else upsert(update.agent);
   });
@@ -258,8 +396,12 @@ export function contributePills(client: PluginClientContext) {
   return () => {
     stopped = true;
     unsubscribe();
+    if (flushTimer) clearTimeout(flushTimer);
+    for (const timer of flipTimers.values()) clearTimeout(timer);
+    flipTimers.clear();
     for (const agentId of [...pills.keys()]) removeAll(agentId);
     agents.clear();
+    inspections.clear();
   };
 }
 

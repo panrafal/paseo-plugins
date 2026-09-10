@@ -25,8 +25,8 @@ Current plugins:
   agent. Reads daemon state from disk; writes only its own index under `$PASEO_HOME/plugin-data`.
 - `task-link`: adds a composer pill for task IDs extracted with a configurable regular expression
   and opens a link template; includes a native plugin settings screen.
-- `chat-resume`: adds pills that schedule a one-shot resume after provider allowance renewal or
-  prepare an editable handover to another ready provider.
+- `chat-resume`: adds pills that continue a quota-exhausted chat now, schedule one resume
+  after provider allowance renewal, or prepare an editable handover to another ready provider.
 - `schedule-runs`: adds a "Schedule runs" sidebar surface that lists every run of every schedule
   with status, workspace, agent, archived state, and final response, filterable by schedule,
   status, archived state, and keyword. Reads daemon state from disk; makes no schedule changes.

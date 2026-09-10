@@ -1,13 +1,12 @@
 import { spawn } from "node:child_process";
 import type { PaseoApi } from "@getpaseo/client";
-import { isUsageExhaustedError, usageResetAt } from "../shared/usage";
+import { CONTINUE_PROMPT, resumeAction } from "../shared/usage";
+import { inspectAgent } from "./inspect-usage";
 
 const GRACE_MS = 2 * 60_000;
 const MIN_DELAY_MS = 60_000;
 const MAX_OUTPUT_BYTES = 64 * 1024;
 const COMMAND_TIMEOUT_MS = 12_000;
-const RESUME_PROMPT =
-  "The provider token allowance should now be renewed. Continue the unfinished work from the previous turn. Review the latest conversation and workspace state before acting.";
 
 interface ScheduleResult {
   scheduleId: string;
@@ -105,12 +104,15 @@ async function createSchedule(agentId: string, paseo: PaseoApi): Promise<Schedul
   const refreshed = await paseo.agents.ref(agentId).refresh();
   const agent = refreshed?.agent;
   if (!agent) throw new Error(`Agent not found: ${agentId}`);
-  if (agent.status !== "error" || !isUsageExhaustedError(agent.lastError)) {
+  const inspection = await inspectAgent(agent);
+  if (!inspection.exhausted) {
     throw new Error("The agent's latest failure is no longer a usage-limit failure.");
   }
-
-  const resetAt = usageResetAt(agent.lastError, agent.updatedAt);
-  if (!resetAt) {
+  if (resumeAction(inspection.resetAt ? new Date(inspection.resetAt) : null) === "continue") {
+    throw new Error("The allowance has already renewed; continue the agent instead of scheduling.");
+  }
+  const resetAt = inspection.resetAt ? new Date(inspection.resetAt) : null;
+  if (!resetAt || Number.isNaN(resetAt.getTime())) {
     throw new Error("The latest usage-limit failure does not include a renewal time.");
   }
   const now = Date.now();
@@ -122,7 +124,7 @@ async function createSchedule(agentId: string, paseo: PaseoApi): Promise<Schedul
     [
       "heartbeat",
       "create",
-      RESUME_PROMPT,
+      CONTINUE_PROMPT,
       "--cron",
       cronAt(scheduledAt),
       "--timezone",

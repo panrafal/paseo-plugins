@@ -1,28 +1,37 @@
 # chat-resume
 
-Adds two composer pills to agents whose latest state is an error caused by exhausted provider usage.
+Adds two composer pills to agents whose latest state is a provider usage-limit / quota
+exhaustion — including Claude's "You've hit your monthly spend limit" assistant message,
+which leaves the agent idle instead of in `error`.
 
-- **Resume when renewed** re-fetches the agent, reads the renewal time from its latest provider error,
-  and creates one heartbeat with `maxRuns: 1`. It runs two minutes after renewal and continues the
-  same agent.
-- **Handover** re-fetches the source agent, selects the next enabled, ready provider, and creates an
-  idle agent in the same workspace. It carries across the closest planning mode and thinking level,
-  then opens an editable handover draft with commands for recovering the source chat through the
-  `paseo` CLI.
+Pills are offered when that state is the latest provider error **or** the last assistant
+line in the transcript, both live and when you reopen the thread later.
 
-The public plugin API does not expose the native composer draft, so the handover draft is hosted in
-an agent-scoped plugin panel. The new agent does not start until **Start agent** is pressed.
+- **Continue** sends a follow-up on the same agent. Shown when the parsed renewal time has
+  already passed, or when the message has no parseable renewal time.
+- **Resume when renewed** creates one heartbeat with `maxRuns: 1`. Shown while the renewal
+  time is still in the future. It runs two minutes after renewal and continues the same
+  agent. Once that time arrives, the pill becomes **Continue**.
+- **Handover** re-fetches the source agent, selects the next enabled, ready provider, and
+  creates an idle agent in the same workspace. It carries across the closest planning mode
+  and thinking level, then opens an editable handover draft with commands for recovering
+  the source chat through the `paseo` CLI.
 
-Provider renewal windows are not currently exposed through the public plugin API. The resume pill
-therefore uses the latest refreshed agent error as the source of the exhaustion state and reset time.
-Errors without a parseable renewal time still get the handover pill, but not the resume pill.
+The public plugin API does not expose the native composer draft, so the handover draft is
+hosted in an agent-scoped plugin panel. The new agent does not start until **Start agent**
+is pressed.
+
+Provider renewal windows are not currently exposed through the public plugin API. The
+plugin reads the latest refreshed agent error and the last transcript assistant message
+for the exhaustion state and reset time, including times such as `resets 12am (Europe/Warsaw)`.
 
 ## Limitations
 
-- Pills appear only when the latest agent state is a usage-limit / quota-exhaustion error.
-- The resume pill needs a parseable renewal time in that error; otherwise only handover is shown.
-- The handover draft lives in a plugin panel, not the native composer. The new agent does not
-  start until **Start agent** is pressed.
+- Pills appear when the latest idle or error state is a usage-limit / quota-exhaustion
+  message, not for context-window overflows or other failures.
+- ACP providers that keep no on-disk transcript are detected only through `lastError`.
+- The handover draft lives in a plugin panel, not the native composer. The new agent does
+  not start until **Start agent** is pressed.
 
 ## Install
 
