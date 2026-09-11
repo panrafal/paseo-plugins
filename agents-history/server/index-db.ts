@@ -12,7 +12,12 @@ import { paseoHome } from "./paseo-home";
  * the plugin on the grep path.
  */
 
-export const SCHEMA_VERSION = 1;
+/**
+ * Bumped when a parser change makes already-indexed rows wrong rather than merely stale. A
+ * database at another version is deleted and rebuilt from the transcripts, which is the only way
+ * a file already consumed to EOF under the old rules gets read again.
+ */
+export const SCHEMA_VERSION = 2;
 const LOG_PREFIX = "[agents-history]";
 const BUSY_TIMEOUT_MS = 5_000;
 
