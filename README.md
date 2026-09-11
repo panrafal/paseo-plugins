@@ -47,7 +47,7 @@ indexes on-disk transcripts (names and paths first); regex mode greps instead.
 ![Agents history](./agents-history/images/agents-history.png)
 
 No settings screen. Filters live on the surface. The index is stored under
-`$PASEO_HOME/plugin-data`; the plugin does not write daemon or provider state.
+`$PASEO_HOME/plugin-data`. Opening an archived agent asks for confirmation before restoring it.
 
 ### Schedule runs
 

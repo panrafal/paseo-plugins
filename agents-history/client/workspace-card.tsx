@@ -1,7 +1,8 @@
 import type { PluginTheme } from "@getpaseo/plugin";
-import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
-import { Icon } from "@getpaseo/plugin/client/react-native";
-import { memo, useCallback, useMemo, useState } from "react";
+import { type PluginSurfaceProps, useRpc } from "@getpaseo/plugin/client";
+import { Icon, Modal, useToast } from "@getpaseo/plugin/client/react-native";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { memo, useCallback, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   type GestureResponderEvent,
@@ -11,6 +12,7 @@ import {
   View,
 } from "react-native";
 import type { AgentMatch, AgentSummary, Snippet } from "../shared/contracts";
+import { restoreAgent } from "../shared/contracts";
 import { type ColorScheme, agentStatusColor } from "../shared/colors";
 import {
   AGENT_STATUS_LABELS,
@@ -191,15 +193,33 @@ function AgentRow({
   styles: CardStyles;
 }) {
   const [hovered, setHovered] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const restoring = useRef(false);
+  const restore = useRpc(restoreAgent);
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const restoration = useMutation({
+    mutationFn: () => restore({ agentId: agent.id }),
+    onSuccess: () => {
+      setConfirmOpen(false);
+      navigation?.openAgent({ agentId: agent.id });
+    },
+    onError: (error: Error) => toast.error(`Could not restore agent: ${error.message}`),
+    onSettled: () => {
+      restoring.current = false;
+      void queryClient.invalidateQueries({ queryKey: ["agents-history", "list"] });
+    },
+  });
   const title = agentLabel(agent);
   const statusColor = agentStatusColor(agent.status, theme, scheme);
   const timeAgo = formatTimeAgo(parseTime(agent.lastActivityAt) || parseTime(agent.createdAt), nowMs);
   const openAgent = useCallback(
     (event?: GestureResponderEvent) => {
       stopPropagation(event);
-      navigation?.openAgent({ agentId: agent.id });
+      if (agent.archivedAt) setConfirmOpen(true);
+      else navigation?.openAgent({ agentId: agent.id });
     },
-    [agent.id, navigation],
+    [agent.id, agent.archivedAt, navigation],
   );
 
   const detail: { icon: string; text: string; color?: string }[] = [
@@ -244,6 +264,47 @@ function AgentRow({
 
   return (
     <View style={styles.agentRow}>
+      {confirmOpen ? (
+        <Modal
+          title="Restore archived agent?"
+          open={confirmOpen}
+          onOpenChange={(open) => {
+            if (!restoring.current) setConfirmOpen(open);
+          }}
+        >
+          <Modal.Content>
+            <View style={styles.restoreDialog}>
+              <Text style={styles.restoreText}>Restore “{title}” and open its conversation?</Text>
+              <View style={styles.restoreActions}>
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={restoration.isPending}
+                  onPress={() => setConfirmOpen(false)}
+                  style={styles.restoreButton}
+                >
+                  <Text style={styles.restoreText}>Cancel</Text>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Restore and open agent"
+                  accessibilityState={{ busy: restoration.isPending, disabled: restoration.isPending }}
+                  disabled={restoration.isPending}
+                  onPress={() => {
+                    if (restoring.current) return;
+                    restoring.current = true;
+                    restoration.mutate();
+                  }}
+                  style={[styles.restoreButton, styles.restoreConfirm]}
+                >
+                  <Text style={styles.restoreConfirmText}>
+                    {restoration.isPending ? "Restoring…" : "Restore and open"}
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          </Modal.Content>
+        </Modal>
+      ) : null}
       {navigation ? (
         <Pressable
           accessibilityRole="button"
@@ -352,6 +413,12 @@ type CardStyles = ReturnType<typeof createStyles>;
 
 function createStyles(theme: PluginTheme) {
   return StyleSheet.create({
+    restoreDialog: { gap: 16 },
+    restoreText: { color: theme.colors.foreground, fontSize: 14 },
+    restoreActions: { flexDirection: "row", justifyContent: "flex-end", flexWrap: "wrap", gap: 8 },
+    restoreButton: { minHeight: 44, padding: 12, borderRadius: 8, justifyContent: "center" },
+    restoreConfirm: { backgroundColor: theme.colors.accent },
+    restoreConfirmText: { color: theme.colors.accentForeground, fontSize: 14, fontWeight: "600" },
     card: {
       borderWidth: StyleSheet.hairlineWidth,
       borderColor: theme.colors.border,

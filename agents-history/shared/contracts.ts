@@ -200,3 +200,9 @@ export const searchHistory = defineRpc({
   }),
 });
 export type SearchResult = z.infer<typeof searchHistory.output>;
+
+export const restoreAgent = defineRpc({
+  name: "agents-history.restore-agent",
+  input: z.object({ agentId: z.string().uuid() }),
+  output: z.object({ agentId: z.string() }),
+});
