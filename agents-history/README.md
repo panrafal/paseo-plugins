@@ -3,7 +3,8 @@
 Paseo plugin that adds an **Agents history** entry to the app sidebar. It lists every workspace
 the selected daemon has ever had, archived ones included, with the agents that ran in each, and
 searches what was said in those conversations through a ranked full-text index of the providers'
-transcript files on the daemon host (or `grep`, for regular expressions).
+transcript files on the daemon host (falling back to `grep -E` over the raw transcripts for
+regular expressions, and wherever the index is not available yet — see **Limitations**).
 
 Paseo's own History screen searches agent titles and hides archived workspaces; this surface is
 for finding the workspace where something was discussed weeks ago.
@@ -111,6 +112,9 @@ searches those files directly:
 - It is built the first time the surface is opened and brought up to date every time the surface
   refreshes its census (every 30 seconds while open) or a ranked search finds it stale, at most
   once per 15 seconds. Nothing runs while the surface is closed, and nothing watches the files.
+  A schema bump — a change to how a line is parsed — deletes the file and rebuilds it from the
+  transcripts on the next open, because a file already consumed to its end would otherwise never
+  be read again.
 - Transcripts are append-only, so each file remembers how many bytes were consumed and a later
   sync reads only what was added; a file that shrank or was replaced is re-read from the start.
   Work happens in small batches, each its own transaction, with the event loop released in
@@ -140,6 +144,15 @@ searches those files directly:
   the first hits in file order, and a query that also appears in a record's fields (a branch
   name, a directory, a session id) matches every line of that transcript; such hits are labelled
   `meta` and shown only when nothing said in the conversation matched.
+- A grep-backed search needs `grep` on the daemon's `PATH`. Windows ships none, so when `PATH`
+  has no `grep` the one bundled with Git for Windows is used, looked up under `%ProgramFiles%`,
+  `%ProgramFiles(x86)%`, `%LOCALAPPDATA%`, `scoop`, and `C:\msys64`. On a host with neither,
+  Ranked search still works once the index is built, but the first search after a fresh install
+  fails with a message saying which executable is missing. Set `AGENTS_HISTORY_GREP` to a grep
+  binary to override the search.
+- Grep is handed one command line per chunk of transcript files. Windows rejects a command line
+  over 32,767 characters, so the chunk budget is smaller there and a single agent holding more
+  files than one command line can carry is split across chunks.
 - The plugin never archives, unarchives, or deletes anything. Its only writes are its own index
   file, which can be deleted at any time and is rebuilt on the next open.
 

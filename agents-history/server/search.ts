@@ -1,5 +1,7 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import type { Readable } from "node:stream";
 import type { RpcInput, RpcOutput } from "@getpaseo/plugin";
 import type { AgentMatch, SearchError, Snippet, SnippetRole, searchHistory } from "../shared/contracts";
@@ -33,8 +35,12 @@ const LINE_CAP_BYTES = PARSE_CAP;
  * over-fetched to leave room for hits inside what was said.
  */
 const PER_FILE_MAX = 20;
-/** Sum of path lengths per grep invocation. */
-const ARGV_CHUNK_BYTES = 100_000;
+/**
+ * Sum of path lengths per grep invocation. Windows caps a whole command line at 32,767
+ * characters and rejects a longer one with ENAMETOOLONG before grep runs, so the budget there is
+ * a third of that, leaving room for the flags, the pattern and MSYS2's own quoting.
+ */
+const ARGV_CHUNK_BYTES = process.platform === "win32" ? 24_000 : 100_000;
 const MAX_ACTIVE = 2;
 const STDERR_CAP = 4_000;
 
@@ -155,11 +161,24 @@ async function collectTargets(
   return { targets, unsearchable, searched };
 }
 
-/** Splits targets into argv-sized chunks without separating one agent's files. */
+/** Splits targets into argv-sized chunks, keeping one agent's files together while they fit. */
 function chunkTargets(targets: readonly SearchTarget[]): SearchTarget[][] {
   const chunks: SearchTarget[][] = [];
   let current: SearchTarget[] = [];
   let bytes = 0;
+  const close = () => {
+    if (current.length === 0) return;
+    chunks.push(current);
+    current = [];
+    bytes = 0;
+  };
+  // Appends one target, closing the chunk first when it would outgrow the budget.
+  const push = (target: SearchTarget) => {
+    const size = Buffer.byteLength(target.file.path) + 1;
+    if (current.length > 0 && bytes + size > ARGV_CHUNK_BYTES) close();
+    current.push(target);
+    bytes += size;
+  };
   let index = 0;
   while (index < targets.length) {
     const agentId = targets[index]?.agentId;
@@ -169,23 +188,74 @@ function chunkTargets(targets: readonly SearchTarget[]): SearchTarget[][] {
       index += 1;
     }
     const groupBytes = group.reduce((sum, target) => sum + Buffer.byteLength(target.file.path) + 1, 0);
-    if (current.length > 0 && bytes + groupBytes > ARGV_CHUNK_BYTES) {
-      chunks.push(current);
-      current = [];
-      bytes = 0;
+    // One agent holding more files than a command line can carry is split across chunks: an argv
+    // past the platform limit is rejected before grep runs, so grouping it whole finds nothing.
+    if (groupBytes > ARGV_CHUNK_BYTES) {
+      for (const target of group) push(target);
+      continue;
     }
+    if (current.length > 0 && bytes + groupBytes > ARGV_CHUNK_BYTES) close();
     current.push(...group);
     bytes += groupBytes;
   }
-  if (current.length > 0) chunks.push(current);
+  close();
   return chunks;
+}
+
+/**
+ * Characters whose escape has to be a bracket class rather than a backslash. This grep's Windows
+ * argv conversion drops the backslash before exactly these, which would turn a literal `*` back
+ * into a wildcard and a literal `(` into an invalid expression. Measured against GNU grep 3.0
+ * (MSYS2): `[.]`-style classes are not uniformly safe either, so only these four use them.
+ */
+const BRACKET_ESCAPED = "*?[](";
+
+function escapeFixedString(value: string): string {
+  // A literal is handed to `-E`, so every metacharacter has to be neutralised.
+  return value.replace(/[.*+?^${}()|[\]\\]/g, (character) =>
+    BRACKET_ESCAPED.includes(character) ? `[${character}]` : `\\${character}`,
+  );
+}
+
+/**
+ * Windows ships no grep, so the copy Git for Windows installs is used when PATH has none. Only a
+ * miss falls through to it: whatever PATH resolves is what the platform intends.
+ */
+function findWindowsGrep(): string | null {
+  const root = process.env["USERPROFILE"];
+  const candidates = [
+    ...[process.env["ProgramFiles"], process.env["ProgramFiles(x86)"], process.env["LOCALAPPDATA"]].flatMap(
+      (base) => (base ? [join(base, "Git", "usr", "bin", "grep.exe")] : []),
+    ),
+    root ? join(root, "scoop", "apps", "git", "current", "usr", "bin", "grep.exe") : null,
+    root ? join(root, "scoop", "shims", "grep.exe") : null,
+    "C:\\msys64\\usr\\bin\\grep.exe",
+  ].filter((candidate): candidate is string => Boolean(candidate));
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
+/** The grep every search runs. Resolved once, and only a hit is remembered. */
+let grepBinary: string | null = null;
+
+function resolveGrep(): string {
+  const override = process.env["AGENTS_HISTORY_GREP"]?.trim();
+  if (override) return override;
+  if (grepBinary) return grepBinary;
+  if (process.platform !== "win32") return "grep";
+  grepBinary = findWindowsGrep();
+  return grepBinary ?? "grep";
 }
 
 function grepArguments(input: SearchInput, perFileLimit: number, paths: readonly string[]): string[] {
   const args = ["-n", "-H", "-a", "-s", "--null", "-m", String(perFileLimit)];
   if (!input.caseSensitive) args.push("-i");
-  args.push(input.regex ? "-E" : "-F");
-  args.push("--", input.query, ...paths);
+  // One expression path for both modes: `-F` alongside `-i` is a build-specific hazard, and an
+  // escaped literal is what `-E` matches verbatim.
+  args.push("-E");
+  args.push("--", input.regex ? input.query : escapeFixedString(input.query), ...paths);
   return args;
 }
 
@@ -269,7 +339,7 @@ function runGrep(
       settled = true;
       resolvePromise(outcome);
     };
-    const child = spawn("grep", args, { stdio: ["ignore", "pipe", "pipe"], signal });
+    const child = spawn(resolveGrep(), args, { stdio: ["ignore", "pipe", "pipe"], signal });
     child.on("error", (error: NodeJS.ErrnoException) => {
       if (error.name === "AbortError") {
         finish({ code: null, stderr, spawnError: null, aborted: true });
@@ -364,7 +434,11 @@ async function execute(input: SearchInput, signal: AbortSignal): Promise<SearchO
       if (outcome.spawnError) {
         error =
           outcome.spawnError.code === "ENOENT"
-            ? { code: "grep-failed", message: "grep is not installed on the daemon host." }
+            ? {
+                code: "grep-failed",
+                message:
+                  "grep is not installed on the daemon host. Install it, or point AGENTS_HISTORY_GREP at a grep executable.",
+              }
             : { code: "grep-failed", message: outcome.spawnError.message };
         break;
       }

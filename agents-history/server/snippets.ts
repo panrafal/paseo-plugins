@@ -168,8 +168,11 @@ function classifyCodex(record: Record<string, unknown>): Extracted | null {
 /** Best-effort extraction for providers whose record shape is not known. */
 function classifyGeneric(record: Record<string, unknown>): Extracted {
   const timestamp = asString(record["timestamp"]) ?? undefined;
-  const role = asString(record["role"]) ?? asString(record["type"]);
   const message = isRecord(record["message"]) ? record["message"] : record;
+  // OMP and Pi wrap the message one level down (`{"type":"message","message":{"role":"user",…}}`),
+  // so the record's own `type` is a wrapper tag, never the speaker; the message's role wins and
+  // the record's own is kept only for providers that put it there.
+  const role = asString(record["role"]) ?? asString(message["role"]) ?? asString(record["type"]);
   const text = textParts(message["content"] ?? message["text"] ?? record["text"]);
   if (role === "user") return { role: "user", text, timestamp };
   if (role === "assistant") return { role: "assistant", text, timestamp };
