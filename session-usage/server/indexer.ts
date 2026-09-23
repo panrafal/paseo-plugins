@@ -5,7 +5,7 @@ import { basename, join, resolve, sep } from "node:path";
 import { UsageStore, type IndexChanges, type IndexedFile, type IndexedStore } from "./index-store";
 import { paseoHome } from "./paseo-home";
 import { object, string, parseTranscript, type ParsedTranscript } from "./parser";
-import { readCursorStore, readDevinStore, readOpenCodeStore, readStore, type StoreReader, type StoreSession } from "./stores";
+import { readAntigravityStore, readCursorStore, readDevinStore, readOpenCodeStore, readStore, type StoreReader, type StoreSession } from "./stores";
 import type { Session, Snapshot } from "../shared/schema";
 
 interface Source {
@@ -28,9 +28,9 @@ interface Metadata {
 interface Agent { id: string; nativeId: string; provider: string; workspaceId: string; cwd: string; title: string; archived: boolean; status: string; createdAt: string; model: string }
 interface Workspace { id: string; projectId: string; cwd: string; title: string; branch: string; labels: string[]; archived: boolean }
 interface Project { id: string; root: string; name: string; archived: boolean }
-export interface Roots { paseo: string; claude: string; codex: string; data: string; cursor: string[] }
+export interface Roots { paseo: string; claude: string; codex: string; data: string; cursor: string[]; antigravity?: string[] }
 
-const PROVIDER_LABELS: Record<string, string> = { claude: "Claude", codex: "Codex", copilot: "Copilot", opencode: "OpenCode", pi: "Pi", omp: "Oh My Pi", kilo: "Kilo", devin: "Devin", cursor: "Cursor" };
+const PROVIDER_LABELS: Record<string, string> = { claude: "Claude", codex: "Codex", copilot: "Copilot", opencode: "OpenCode", pi: "Pi", omp: "Oh My Pi", kilo: "Kilo", devin: "Devin", cursor: "Cursor", antigravity: "Antigravity" };
 function providerLabel(metadata: Metadata, provider: string): string {
   return metadata.providerLabels.get(provider) ?? PROVIDER_LABELS[provider] ?? `${provider.charAt(0).toUpperCase()}${provider.slice(1)}`;
 }
@@ -44,14 +44,32 @@ async function sessionStores(roots: Roots, warnings: Set<string>): Promise<{ pro
       for (const session of await entries(join(root, "chats", workspace.name), warnings)) if (session.isDirectory()) cursor.push(join(root, "chats", workspace.name, session.name, "store.db"));
     }
   }
+  const antigravity: string[] = [];
+  for (const root of roots.antigravity ?? []) {
+    for (const session of await entries(root, warnings)) {
+      if (session.isFile() && session.name.endsWith(".db")) antigravity.push(join(root, session.name));
+    }
+  }
   return [
     { provider: "opencode", paths: [join(roots.data, "opencode", "opencode.db")], read: readOpenCodeStore },
     { provider: "kilo", paths: [join(roots.data, "kilo", "kilo.db")], read: readOpenCodeStore },
     { provider: "devin", paths: [join(roots.data, "devin", "cli", "sessions.db")], read: readDevinStore },
     { provider: "cursor", paths: cursor, read: readCursorStore },
+    { provider: "antigravity", paths: antigravity, read: readAntigravityStore },
   ];
 }
 /** Cursor's config directory: CURSOR_CONFIG_DIR, else `$XDG_CONFIG_HOME/cursor`, else `~/.cursor`. The daemon may not share the agent's XDG setting, so both defaults are read. */
+/** Antigravity conversations directory: ANTIGRAVITY_HOME or ~/.gemini/{antigravity-acp,antigravity,antigravity-cli}/conversations */
+function antigravityRoots(): string[] {
+  const configured = process.env.ANTIGRAVITY_HOME?.trim();
+  if (configured) return [configured];
+  const gemini = join(homedir(), ".gemini");
+  return [
+    join(gemini, "antigravity-acp", "conversations"),
+    join(gemini, "antigravity", "conversations"),
+    join(gemini, "antigravity-cli", "conversations"),
+  ];
+}
 function cursorRoots(): string[] {
   const configured = process.env.CURSOR_CONFIG_DIR?.trim();
   if (configured) return [configured];
@@ -102,7 +120,14 @@ export async function readMetadata(root: string, warnings: Set<string>): Promise
       if (!provider) continue;
       // Explicit allowlist: persistence.metadata contains credentials and is never retained.
       const p = object(a.persistence);
-      const nativeId = provider === "codex" ? string(p.nativeHandle) || string(p.sessionId) : string(p.sessionId) || string(p.nativeHandle);
+      let rawNativeId = provider === "codex" ? string(p.nativeHandle) || string(p.sessionId) : string(p.sessionId) || string(p.nativeHandle);
+      if (rawNativeId.startsWith("plugin:")) {
+        try {
+          const parsed = JSON.parse(rawNativeId.slice(7));
+          rawNativeId = string(parsed?.data?.sessionId) || string(parsed?.sessionId) || rawNativeId;
+        } catch {}
+      }
+      const nativeId = rawNativeId;
       const id = string(a.id);
       if (!id) continue;
       const key = `${provider}:${nativeId || `missing:${id}`}`;
@@ -179,7 +204,7 @@ function joinSession(source: Source, parsed: ParsedTranscript, metadata: Metadat
 }
 
 export function defaultRoots(): Roots {
-  return { paseo: paseoHome(), claude: process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), ".claude"), codex: process.env.CODEX_HOME ?? join(homedir(), ".codex"), data: process.env.XDG_DATA_HOME || join(homedir(), ".local", "share"), cursor: cursorRoots() };
+  return { paseo: paseoHome(), claude: process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), ".claude"), codex: process.env.CODEX_HOME ?? join(homedir(), ".codex"), data: process.env.XDG_DATA_HOME || join(homedir(), ".local", "share"), cursor: cursorRoots(), antigravity: antigravityRoots() };
 }
 
 /**
