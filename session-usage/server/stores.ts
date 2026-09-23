@@ -339,9 +339,14 @@ export const readAntigravityStore: StoreReader = (db, file) => {
   let lastTimestamp: string | null = null;
 
   if (tables.has("steps")) {
+    const stepCols = new Set((db.prepare("PRAGMA table_info(steps)").all() as Row[]).map((c) => str(c.name)));
+    const metaExpr = stepCols.has("metadata") ? "CAST(metadata AS BLOB)" : "NULL";
+    const bytesExpr = stepCols.has("metadata")
+      ? "coalesce(length(CAST(metadata AS BLOB)), 0) + coalesce(length(CAST(step_payload AS BLOB)), 0)"
+      : "coalesce(length(CAST(step_payload AS BLOB)), 0)";
     const stepRows = db.prepare(`SELECT idx, step_type AS stepType, status,
-      length(CAST(metadata AS BLOB)) + length(CAST(step_payload AS BLOB)) AS bytes,
-      step_payload AS payload, metadata FROM steps ORDER BY idx`).all() as Row[];
+      ${bytesExpr} AS bytes,
+      step_payload AS payload, ${metaExpr} AS metadata FROM steps ORDER BY idx`).all() as Row[];
     for (const row of stepRows) {
       builder.bytes += num(row.bytes) ?? 0;
       const payload = row.payload instanceof Uint8Array ? row.payload : null;

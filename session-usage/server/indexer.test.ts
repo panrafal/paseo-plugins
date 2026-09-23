@@ -368,10 +368,27 @@ test("Antigravity SQLite stores record token usage, models, and steps", async ()
     db.prepare("INSERT INTO gen_metadata VALUES (0, ?, ?)").run(genData, genData.length);
     db.close();
 
+    // Legacy schema without metadata column
+    const dbPath2 = join(convDir, "ag-session-2.db");
+    const db2 = new DatabaseSync(dbPath2);
+    db2.exec(`
+      CREATE TABLE trajectory_meta (trajectory_id TEXT PRIMARY KEY);
+      CREATE TABLE steps (idx INTEGER PRIMARY KEY, status INTEGER, step_type INTEGER, step_payload BLOB);
+    `);
+    db2.prepare("INSERT INTO trajectory_meta VALUES (?)").run("ag-session-2");
+    db2.prepare("INSERT INTO steps VALUES (0, 3, 14, ?)").run(userPayload);
+    db2.close();
+
     index.snapshot();
     const snapshot = await index.settled();
     SnapshotSchema.parse(snapshot);
     assert.deepEqual(snapshot.warnings, []);
+
+    const legacySession = snapshot.sessions.find((s) => s.id === "refined-antigravity-acp:ag-session-2");
+    assert.ok(legacySession);
+    assert.equal(legacySession.coverage, "partial");
+    const legacyRow = filterSessions(snapshot.sessions, EMPTY_FILTERS).find((r) => r.session.id === "refined-antigravity-acp:ag-session-2")!;
+    assert.equal(legacyRow.metrics.userMessages, 1);
 
     const session = snapshot.sessions.find((s) => s.id === "refined-antigravity-acp:ag-session-1");
     assert.ok(session);
