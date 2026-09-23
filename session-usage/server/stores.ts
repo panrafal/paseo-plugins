@@ -1,3 +1,4 @@
+import { basename } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 import { estimateCost } from "../shared/pricing";
@@ -313,3 +314,160 @@ export const readCursorStore: StoreReader = (db, file) => {
   const base = { nativeId, parentId: null, cwd, title: str(meta.name).slice(0, 300), branch: "" };
   return [{ nativeId, parentId: null, archived: false, bytes: builder.bytes, messages: builder.messages, parsed: builder.finish(base, created, iso(file.mtimeMs), "Cursor keeps no token usage records locally; token and cost measurements are unknown.") }];
 };
+
+const ANTIGRAVITY_COUNT_KEYS = COUNT_KEYS.filter((key) => key !== "compactions");
+/**
+ * Antigravity agent: one store per session (`<sessionId>.db`).
+ * Per-turn token usage and generation models are recorded in protobuf blobs in `gen_metadata`.
+ * Individual user, assistant and tool steps are recorded in `steps`.
+ */
+export const readAntigravityStore: StoreReader = (db, file) => {
+  const tables = new Set((db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as Row[]).map((r) => str(r.name)));
+  if (!tables.has("gen_metadata") && !tables.has("steps") && !tables.has("trajectory_meta")) return [];
+
+  const traj = tables.has("trajectory_meta") ? (db.prepare("SELECT trajectory_id FROM trajectory_meta LIMIT 1").get() as Row | undefined) : undefined;
+  const dbFile = (db.prepare("PRAGMA database_list").all() as Row[]).find((r) => r.name === "main")?.file;
+  const fallbackId = typeof dbFile === "string" ? basename(dbFile, ".db") : "";
+  const nativeId = str(traj?.trajectory_id) || fallbackId;
+  if (!nativeId) return [];
+
+  const builder = new SessionBuilder(ANTIGRAVITY_COUNT_KEYS);
+  builder.time(iso(file.mtimeMs));
+
+  let title = "";
+  let firstTimestamp: string | null = null;
+  let lastTimestamp: string | null = null;
+
+  if (tables.has("steps")) {
+    const stepRows = db.prepare(`SELECT idx, step_type AS stepType, status,
+      length(CAST(metadata AS BLOB)) + length(CAST(step_payload AS BLOB)) AS bytes,
+      step_payload AS payload, metadata FROM steps ORDER BY idx`).all() as Row[];
+    for (const row of stepRows) {
+      builder.bytes += num(row.bytes) ?? 0;
+      const payload = row.payload instanceof Uint8Array ? row.payload : null;
+      const fields = payload ? protobufFields(payload) : null;
+
+      // Extract timestamp if present in payload (field 5 -> field 1: sec, nano)
+      let at: string | null = null;
+      const f5 = fields?.find((f) => f.field === 5 && typeof f.value !== "number")?.value as Uint8Array | undefined;
+      if (f5) {
+        const f5Fields = protobufFields(f5);
+        const tsMsg = f5Fields?.find((f) => f.field === 1 && typeof f.value !== "number")?.value as Uint8Array | undefined;
+        if (tsMsg) {
+          const tsFields = protobufFields(tsMsg);
+          const sec = tsFields?.find((f) => f.field === 1 && typeof f.value === "number")?.value as number | undefined;
+          const nano = tsFields?.find((f) => f.field === 2 && typeof f.value === "number")?.value as number | undefined;
+          if (sec) at = new Date(sec * 1000 + Math.floor((nano ?? 0) / 1e6)).toISOString();
+        }
+      }
+      if (at) {
+        builder.time(at);
+        if (!firstTimestamp) firstTimestamp = at;
+        lastTimestamp = at;
+      }
+
+      const stepType = num(row.stepType);
+      if (stepType === 14) {
+        builder.messages++;
+        const f19 = fields?.find((f) => f.field === 19 && typeof f.value !== "number")?.value as Uint8Array | undefined;
+        let text = "";
+        if (f19) {
+          const f19Fields = protobufFields(f19);
+          const f2 = f19Fields?.find((f) => f.field === 2 && typeof f.value !== "number")?.value as Uint8Array | undefined;
+          if (f2) text = Buffer.from(f2).toString("utf8");
+        }
+        if (!title && text) {
+          title = text.replace(/^(?:(?:\[Execution Guidance\]:?)|[#\s*-]+)+/i, "").trim().replace(/\s+/g, " ").slice(0, 300);
+        }
+        builder.add(at, "unknown", null, { userMessages: 1, userCharacters: text.length });
+      } else if (stepType === 15) {
+        builder.messages++;
+        const f20 = fields?.find((f) => f.field === 20 && typeof f.value !== "number")?.value as Uint8Array | undefined;
+        let asstTextLen = 0;
+        let toolName: string | undefined;
+        let toolInputLen = 0;
+        if (f20) {
+          const f20Fields = protobufFields(f20);
+          const f1 = f20Fields?.find((f) => f.field === 1 && typeof f.value !== "number")?.value as Uint8Array | undefined;
+          if (f1) asstTextLen = f1.length;
+          const call = f20Fields?.find((f) => f.field === 7 && typeof f.value !== "number")?.value as Uint8Array | undefined;
+          if (call) {
+            const callFields = protobufFields(call);
+            const nameVal = callFields?.find((f) => f.field === 2 && typeof f.value !== "number")?.value as Uint8Array | undefined;
+            const inputVal = callFields?.find((f) => f.field === 3 && typeof f.value !== "number")?.value as Uint8Array | undefined;
+            if (nameVal) toolName = Buffer.from(nameVal).toString("utf8");
+            if (inputVal) toolInputLen = inputVal.length;
+          }
+        }
+        builder.add(at, "unknown", null, { assistantMessages: 1, assistantCharacters: asstTextLen });
+        if (toolName) builder.add(at, "unknown", null, { toolCalls: 1, toolInputCharacters: toolInputLen }, toolName);
+      } else if (stepType === 7) {
+        const metaBlob = row.metadata instanceof Uint8Array ? row.metadata : null;
+        builder.add(at, "unknown", null, { toolOutputCharacters: (payload?.length ?? 0) + (metaBlob?.length ?? 0) });
+      }
+    }
+  }
+
+  if (tables.has("gen_metadata")) {
+    const genRows = db.prepare("SELECT idx, data, size FROM gen_metadata ORDER BY idx").all() as Row[];
+    for (const row of genRows) {
+      const dataBlob = row.data instanceof Uint8Array ? row.data : null;
+      if (!dataBlob) continue;
+      builder.bytes += dataBlob.length;
+      const top = protobufFields(dataBlob);
+      const f1 = top?.find((f) => f.field === 1 && typeof f.value !== "number")?.value as Uint8Array | undefined;
+      if (!f1) continue;
+      const sub = protobufFields(f1);
+      const f4 = sub?.find((f) => f.field === 4 && typeof f.value !== "number")?.value as Uint8Array | undefined;
+      const f19 = sub?.find((f) => f.field === 19 && typeof f.value !== "number")?.value as Uint8Array | undefined;
+      const model = f19 ? Buffer.from(f19).toString("utf8") : "unknown";
+
+      let at: string | null = null;
+      const f9 = sub?.find((f) => f.field === 9 && typeof f.value !== "number")?.value as Uint8Array | undefined;
+      if (f9) {
+        const f9Fields = protobufFields(f9);
+        const tsBlob = f9Fields?.find((f) => f.field === 4 && typeof f.value !== "number")?.value as Uint8Array | undefined;
+        if (tsBlob) {
+          const tsFields = protobufFields(tsBlob);
+          const sec = tsFields?.find((f) => f.field === 1 && typeof f.value === "number")?.value as number | undefined;
+          const nano = tsFields?.find((f) => f.field === 2 && typeof f.value === "number")?.value as number | undefined;
+          if (sec) at = new Date(sec * 1000 + Math.floor((nano ?? 0) / 1e6)).toISOString();
+        }
+      }
+      at = at ?? lastTimestamp ?? firstTimestamp ?? iso(file.mtimeMs);
+      builder.time(at);
+
+      let input: number | null = null;
+      let output: number | null = null;
+      let reasoning: number | null = null;
+      if (f4) {
+        const tokens = protobufFields(f4);
+        for (const t of tokens ?? []) {
+          if (t.field === 2 && typeof t.value === "number") input = t.value;
+          else if (t.field === 3 && typeof t.value === "number") output = t.value;
+          else if (t.field === 9 && typeof t.value === "number") reasoning = t.value;
+        }
+      }
+      const tokens = usage(model, input, output, null, null, reasoning);
+      if (tokens && (tokens.inputTokens ?? 0) + (tokens.outputTokens ?? 0) > 0) {
+        builder.add(at, model, null, tokens);
+      }
+    }
+    if (!builder.messages && genRows.length > 0) {
+      builder.messages = genRows.length;
+    }
+  }
+
+  const base = { nativeId, parentId: null, cwd: "", title, branch: "" };
+  const created = firstTimestamp ?? iso(file.mtimeMs);
+  const updated = lastTimestamp ?? iso(file.mtimeMs);
+  return [{
+    nativeId,
+    parentId: null,
+    archived: false,
+    bytes: builder.bytes,
+    messages: builder.messages,
+    parsed: builder.finish(base, created, updated, "Antigravity keeps no token usage records in this database; token and cost measurements are unknown.")
+  }];
+};
+

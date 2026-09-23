@@ -1,7 +1,7 @@
 # session-usage
 
 Adds **Session usage** to Paseo's sidebar and Command Center. It reads Claude Code and Codex
-transcripts and the OpenCode, Kilo, Devin CLI, and Cursor session stores on the selected daemon, including
+transcripts and the OpenCode, Kilo, Devin CLI, Cursor, and Antigravity session stores on the selected daemon, including
 archived sessions, subagents, and sessions started outside Paseo, then joins them with Paseo's
 project, workspace, and agent records. Agents of other providers are listed from Paseo's records
 with unknown usage. Subscription allowance cards show how much of each provider's limits is used,
@@ -161,6 +161,7 @@ the provider accounts.
 | OpenCode, Kilo | `$XDG_DATA_HOME/opencode/opencode.db` and `$XDG_DATA_HOME/kilo/kilo.db`, default `~/.local/share`; only the `session`, `message`, and `part` tables |
 | Devin CLI | `$XDG_DATA_HOME/devin/cli/sessions.db`, default `~/.local/share`; only the `sessions` and `message_nodes` tables |
 | Cursor | `$CURSOR_CONFIG_DIR/{acp-sessions/*,chats/*/*}/store.db`; without it, both `$XDG_CONFIG_HOME/cursor` (default `~/.config/cursor`) and `~/.cursor`; only the `meta` and `blobs` tables |
+| Antigravity | `$ANTIGRAVITY_HOME` or `~/.gemini/{antigravity-acp,antigravity,antigravity-cli}/conversations/*.db`; only the `trajectory_meta`, `steps`, and `gen_metadata` tables |
 | Paseo | `$PASEO_HOME/projects/{projects,workspaces}.json`, `$PASEO_HOME/agents/*/*.json`, and provider labels from `$PASEO_HOME/config.json`, default `~/.paseo` |
 | Allowances | Paseo's provider usage report (`paseo.providers.listUsage`), which the daemon caches for five minutes; only window names, percentages, reset times, and plan labels are kept |
 | Index | Written by this plugin: `$PASEO_HOME/plugin-data/session-usage/index.sqlite`, or `$PASEO_SESSION_USAGE_DB` |
@@ -185,6 +186,7 @@ the provider accounts.
   comes from the generation model suffix (`gpt-6-astra-medium` is `gpt-6-astra` at `medium`).
   Cache keepalive pings are not user messages. Tool errors use the recorded tool result status.
   Turn time, reasoning, and compactions are unknown.
+- Antigravity: one store per session (`<sessionId>.db`). Turn-by-turn token usage, reasoning tokens, generation models, and timestamps are recorded in `gen_metadata` protobuf records. Messages, characters, and tool calls come from the `steps` table.
 - Cursor: one store per session. Only messages listed by the latest root blob count; older roots and
   edited-away messages in the store are ignored. Cursor records no token usage or message times
   locally, so tokens, cost, and turn time are unknown, sessions show partial coverage, and all
@@ -237,7 +239,7 @@ the provider accounts.
 
 ## Limitations
 
-- Measures Claude, Codex, OpenCode, Kilo, and Devin CLI from local records. Cursor sessions include
+- Measures Claude, Codex, OpenCode, Kilo, Devin CLI, and Antigravity from local records. Cursor sessions include
   messages, tool calls, and models but no token usage. Other providers appear only through Paseo's
   agent records, with unknown usage.
 - Cost figures are a standard short-context API equivalent from a fixed price table, not a bill

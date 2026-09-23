@@ -294,3 +294,98 @@ test("snapshots carry a content revision and omit sessions the caller already ha
     assert.equal(first.view(initial.revision).unchanged, undefined);
   } finally { first.dispose(); second.dispose(); await rm(root, { recursive: true, force: true }); }
 });
+
+test("Antigravity SQLite stores record token usage, models, and steps", async () => {
+  const root = await mkdtemp(join(tmpdir(), "session-usage-antigravity-"));
+  const roots = {
+    paseo: join(root, "paseo"),
+    claude: join(root, "claude"),
+    codex: join(root, "codex"),
+    data: join(root, "data"),
+    cursor: [],
+    antigravity: [join(root, "gemini", "antigravity-acp", "conversations")],
+  };
+  const index = new UsageIndex(roots);
+  const T0 = Date.parse("2026-09-10T12:00:00Z");
+  try {
+    await save(join(roots.paseo, "config.json"), JSON.stringify({ agents: { providers: { "refined-antigravity-acp": { extends: "acp", label: "Antigravity" } } } }));
+    await save(join(roots.paseo, "projects", "workspaces.json"), JSON.stringify([{ workspaceId: "w", projectId: "p", cwd: "/worktree", title: "Workspace" }]));
+    const agent = (id: string, provider: string, sessionId: string) =>
+      save(join(roots.paseo, "agents", "bucket", `${id}.json`), JSON.stringify({
+        id, provider, cwd: "/worktree", workspaceId: "w", title: "Antigravity Task", createdAt: "2026-09-10",
+        persistence: { sessionId: `plugin:{"version":1,"data":{"sessionId":"${sessionId}"}}` }
+      }));
+    await agent("ag-agent", "refined-antigravity-acp", "ag-session-1");
+
+    const convDir = roots.antigravity[0];
+    await mkdir(convDir, { recursive: true });
+    const dbPath = join(convDir, "ag-session-1.db");
+    const db = new DatabaseSync(dbPath);
+    db.exec(`
+      CREATE TABLE trajectory_meta (trajectory_id TEXT PRIMARY KEY);
+      CREATE TABLE steps (idx INTEGER PRIMARY KEY, step_type INTEGER, status INTEGER, metadata BLOB, step_payload BLOB);
+      CREATE TABLE gen_metadata (idx INTEGER PRIMARY KEY, data BLOB, size INTEGER);
+    `);
+    db.prepare("INSERT INTO trajectory_meta VALUES (?)").run("ag-session-1");
+
+    const varint = (n: number) => {
+      const bytes: number[] = [];
+      while (n >= 0x80) { bytes.push((n & 0x7f) | 0x80); n >>>= 7; }
+      bytes.push(n);
+      return Buffer.from(bytes);
+    };
+    const fieldVarint = (tag: number, n: number) => Buffer.concat([varint((tag << 3) | 0), varint(n)]);
+    const fieldBytes = (tag: number, bytes: Buffer) => Buffer.concat([varint((tag << 3) | 2), varint(bytes.length), bytes]);
+
+    // Step 0: User prompt (step_type = 14)
+    const userPayload = fieldBytes(19, fieldBytes(2, Buffer.from("Explain quantum computing")));
+    db.prepare("INSERT INTO steps VALUES (0, 14, 3, NULL, ?)").run(userPayload);
+
+    // Step 1: Assistant message (step_type = 15) with tool call
+    const toolCall = Buffer.concat([fieldBytes(2, Buffer.from("web_search")), fieldBytes(3, Buffer.from("{\"q\":\"quantum\"}"))]);
+    const asstPayload = fieldBytes(20, Buffer.concat([
+      fieldBytes(1, Buffer.from("Let me look that up")),
+      fieldBytes(7, toolCall),
+    ]));
+    db.prepare("INSERT INTO steps VALUES (1, 15, 3, NULL, ?)").run(asstPayload);
+
+    // gen_metadata: turn 0
+    const tokensMsg = Buffer.concat([
+      fieldVarint(2, 1000), // input
+      fieldVarint(3, 200),  // output
+      fieldVarint(9, 50),   // reasoning
+    ]);
+    const tsInner = Buffer.concat([fieldVarint(1, Math.floor(T0 / 1000)), fieldVarint(2, 0)]);
+    const tsMsg = fieldBytes(4, tsInner);
+    const modelMsg = Buffer.from("gemini-3.8-flash");
+
+    const f1Inner = Buffer.concat([
+      fieldBytes(4, tokensMsg),
+      fieldBytes(9, tsMsg),
+      fieldBytes(19, modelMsg),
+    ]);
+    const genData = fieldBytes(1, f1Inner);
+    db.prepare("INSERT INTO gen_metadata VALUES (0, ?, ?)").run(genData, genData.length);
+    db.close();
+
+    index.snapshot();
+    const snapshot = await index.settled();
+    SnapshotSchema.parse(snapshot);
+    assert.deepEqual(snapshot.warnings, []);
+
+    const session = snapshot.sessions.find((s) => s.id === "refined-antigravity-acp:ag-session-1");
+    assert.ok(session);
+    assert.equal(session.providerLabel, "Antigravity");
+    assert.equal(session.coverage, "available");
+
+    const row = filterSessions(snapshot.sessions, EMPTY_FILTERS).find((r) => r.session.id === "refined-antigravity-acp:ag-session-1")!;
+    assert.equal(row.metrics.inputTokens, 1000);
+    assert.equal(row.metrics.outputTokens, 200);
+    assert.equal(row.metrics.reasoningTokens, 50);
+    assert.equal(row.metrics.requests, 1);
+    assert.equal(row.metrics.userMessages, 1);
+    assert.equal(row.metrics.assistantMessages, 1);
+    assert.equal(row.metrics.toolCalls, 1);
+    assert.deepEqual(row.buckets.flatMap((b) => Object.entries(b.tools)), [["web_search", 1]]);
+  } finally { index.dispose(); await rm(root, { recursive: true, force: true }); }
+});

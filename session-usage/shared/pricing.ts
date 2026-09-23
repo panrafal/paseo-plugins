@@ -29,12 +29,19 @@ const RATES: Record<string, Rates> = {
   "claude-sonnet-4-5": [3, 0.3, 3.75, 6, 15],
   "claude-sonnet-4": [3, 0.3, 3.75, 6, 15],
   "claude-haiku-4-5": [1, 0.1, 1.25, 2, 5],
+  "gemini-2.5-flash": [0.1, 0.025, 0.1, 0.1, 0.4],
+  "gemini-2.5-pro": [1.25, 0.3125, 1.25, 1.25, 5],
+  "gemini-3-flash": [0.1, 0.025, 0.1, 0.1, 0.4],
+  "gemini-3-pro": [1.25, 0.3125, 1.25, 1.25, 5],
+  "gemini-3.7-flash": [0.1, 0.025, 0.1, 0.1, 0.4],
+  "gemini-3.8-flash": [0.1, 0.025, 0.1, 0.1, 0.4],
+  "gemini-3.8-pro": [1.25, 0.3125, 1.25, 1.25, 5],
   "claude-3-5-haiku": [0.8, 0.08, 1, 1.6, 4],
 };
 
 export function estimateCost(model: string, metrics: Metrics): number | null {
   // Router IDs such as "anthropic/claude-sonnet-4.5" use the base model rate.
-  const normalized = model.replace(/^.*\//, "").replace(/^(claude-[a-z]+-\d+)\.(\d+)/, "$1-$2").replace(/-\d{8}$/, "").replace(/-\d{4}-\d{2}-\d{2}$/, "");
+  const normalized = model.replace(/^.*\//, "").replace(/^(claude-[a-z]+-\d+)\.(\d+)/, "$1-$2").replace(/-(?:high|low|medium|default)$/i, "").replace(/-\d{8}$/, "").replace(/-\d{4}-\d{2}-\d{2}$/, "");
   const rates = RATES[normalized];
   const { uncachedTokens: input, cacheReadTokens: read, cacheWriteTokens: write, outputTokens: output } = metrics;
   if (!rates || input === null || read === null || write === null || output === null) return null;
