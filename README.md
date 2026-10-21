@@ -64,7 +64,7 @@ schedules.
 ### Session usage
 
 [`session-usage`](./session-usage) — token, cache, cost, and activity stats for Claude, Codex,
-OpenCode, Kilo, and Devin CLI from local transcripts and session stores, including archived
+Oh My Pi, OpenCode, Kilo, and Devin CLI from local transcripts and session stores, including archived
 sessions and subagents, plus Cursor activity without token counts. Sortable table, provider charts,
 calendar, and CSV export. Subscription allowance cards show Paseo's reported limits with per-hour or
 per-day token charts that focus the report, and how long each allowance lasts at the current pace.

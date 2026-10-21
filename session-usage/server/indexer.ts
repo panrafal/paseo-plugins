@@ -1,10 +1,10 @@
 import { createHash } from "node:crypto";
 import { readFile, readdir, realpath, stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, join, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
 import { UsageStore, type IndexChanges, type IndexedFile, type IndexedStore } from "./index-store";
 import { paseoHome } from "./paseo-home";
-import { object, string, parseTranscript, type ParsedTranscript } from "./parser";
+import { object, string, parseTranscript, type ParsedTranscript, type TranscriptProvider } from "./parser";
 import { readCursorStore, readDevinStore, readOpenCodeStore, readStore, type StoreReader, type StoreSession } from "./stores";
 import type { Session, Snapshot } from "../shared/schema";
 
@@ -20,22 +20,26 @@ interface Source {
   size: number;
   mtimeMs: number;
 }
-interface FileSource extends Source { provider: "claude" | "codex"; providerId: string }
+interface FileSource extends Source { provider: TranscriptProvider; providerId: string }
 interface Metadata {
   agents: Map<string, Agent>;
   workspaces: Map<string, Workspace>;
   projects: Map<string, Project>;
   providerLabels: Map<string, string>;
   profiles: ProfileRoot[];
+  /** `omp` and the custom provider IDs that extend it. */
+  ompProviders: Set<string>;
 }
 /** A Claude or Codex configuration directory owned by one Paseo provider, e.g. a second account. */
 export interface ProfileRoot { id: string; kind: "claude" | "codex"; root: string }
-interface Agent { id: string; nativeId: string; provider: string; workspaceId: string; cwd: string; title: string; archived: boolean; status: string; createdAt: string; model: string }
+interface Agent { id: string; nativeId: string; provider: string; workspaceId: string; cwd: string; title: string; archived: boolean; status: string; createdAt: string; model: string; sessionFile: string }
 interface Workspace { id: string; projectId: string; cwd: string; title: string; branch: string; labels: string[]; archived: boolean }
 interface Project { id: string; root: string; name: string; archived: boolean }
-/** `profiles` overrides the provider profiles read from Paseo's config.json; tests set it, production leaves it undefined. */
-export interface Roots { paseo: string; claude: string; codex: string; data: string; cursor: string[]; profiles?: ProfileRoot[] }
+/** `profiles` overrides the provider profiles read from Paseo's config.json; tests set it, production leaves it undefined. `omp` is Oh My Pi's sessions directory. */
+export interface Roots { paseo: string; claude: string; codex: string; omp: string; data: string; cursor: string[]; profiles?: ProfileRoot[] }
 
+/** An Oh My Pi session file or directory name: `<timestamp>_<session id>`. */
+const OMP_SESSION = /^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z_(.+)$/;
 const PROVIDER_LABELS: Record<string, string> = { claude: "Claude", codex: "Codex", copilot: "Copilot", opencode: "OpenCode", pi: "Pi", omp: "Oh My Pi", kilo: "Kilo", devin: "Devin", cursor: "Cursor" };
 function providerLabel(metadata: Metadata, provider: string): string {
   return metadata.providerLabels.get(provider) ?? PROVIDER_LABELS[provider] ?? `${provider.charAt(0).toUpperCase()}${provider.slice(1)}`;
@@ -80,7 +84,7 @@ async function json(path: string, warnings: Set<string>): Promise<unknown> {
 }
 const array = (value: unknown): unknown[] => Array.isArray(value) ? value : [];
 export async function readMetadata(root: string, warnings: Set<string>): Promise<Metadata> {
-  const metadata: Metadata = { agents: new Map(), workspaces: new Map(), projects: new Map(), providerLabels: new Map(), profiles: [] };
+  const metadata: Metadata = { agents: new Map(), workspaces: new Map(), projects: new Map(), providerLabels: new Map(), profiles: [], ompProviders: new Set(["omp"]) };
   const [projects, workspaces, config] = await Promise.all([json(join(root, "projects", "projects.json"), warnings), json(join(root, "projects", "workspaces.json"), warnings), json(join(root, "config.json"), warnings)]);
   for (const raw of array(projects)) {
     const p = object(raw);
@@ -98,6 +102,7 @@ export async function readMetadata(root: string, warnings: Set<string>): Promise
     const label = string(object(provider).label).trim();
     if (label) metadata.providerLabels.set(id, label.slice(0, 80));
     const env = object(object(provider).env);
+    if (string(object(provider).extends) === "omp") metadata.ompProviders.add(id);
     const claudeRoot = string(env.CLAUDE_CONFIG_DIR).trim();
     const codexRoot = string(env.CODEX_HOME).trim();
     if (claudeRoot) metadata.profiles.push({ id, kind: "claude", root: expandHome(claudeRoot) });
@@ -114,11 +119,14 @@ export async function readMetadata(root: string, warnings: Set<string>): Promise
       if (!provider) continue;
       // Explicit allowlist: persistence.metadata contains credentials and is never retained.
       const p = object(a.persistence);
-      const nativeId = provider === "codex" ? string(p.nativeHandle) || string(p.sessionId) : string(p.sessionId) || string(p.nativeHandle);
+      let nativeId = provider === "codex" ? string(p.nativeHandle) || string(p.sessionId) : string(p.sessionId) || string(p.nativeHandle);
+      // Early Oh My Pi agents recorded the session file path as their session ID.
+      if (metadata.ompProviders.has(provider) && nativeId.endsWith(".jsonl")) nativeId = OMP_SESSION.exec(basename(nativeId, ".jsonl"))?.[1] ?? nativeId;
       const id = string(a.id);
       if (!id) continue;
       const key = `${provider}:${nativeId || `missing:${id}`}`;
-      const value: Agent = { id, nativeId, provider, cwd: string(a.cwd), workspaceId: string(a.workspaceId), title: string(a.title), archived: Boolean(a.archivedAt), status: string(a.lastStatus) || "unknown", createdAt: string(a.createdAt), model: string(object(a.runtimeInfo).model) || string(object(a.config).model) };
+      const handle = string(p.nativeHandle);
+      const value: Agent = { id, nativeId, provider, cwd: string(a.cwd), workspaceId: string(a.workspaceId), title: string(a.title), archived: Boolean(a.archivedAt), status: string(a.lastStatus) || "unknown", createdAt: string(a.createdAt), model: string(object(a.runtimeInfo).model) || string(object(a.config).model), sessionFile: isAbsolute(handle) && handle.endsWith(".jsonl") ? handle : "" };
       // Resuming the same provider session in multiple Paseo records must not multiply usage.
       const previous = metadata.agents.get(key);
       if (!previous || (previous.archived && !value.archived) || (previous.archived === value.archived && value.createdAt > previous.createdAt)) metadata.agents.set(key, value);
@@ -157,9 +165,42 @@ export async function profileRoots(roots: Roots, profiles: ProfileRoot[]): Promi
   }
   return result;
 }
+/**
+ * Oh My Pi session directories: the daemon's default plus the directory of every session file an
+ * omp-based Paseo agent recorded, which covers omp profiles and custom agent directories.
+ */
+export async function ompRoots(root: string, metadata: Metadata): Promise<{ id: string; root: string }[]> {
+  const candidates: { id: string; root: string }[] = [];
+  for (const agent of metadata.agents.values()) {
+    // `<sessions>/<cwd slug>/<timestamp>_<id>.jsonl`
+    if (agent.sessionFile && metadata.ompProviders.has(agent.provider)) candidates.push({ id: agent.provider, root: dirname(dirname(agent.sessionFile)) });
+  }
+  candidates.push({ id: "omp", root });
+  const result: { id: string; root: string }[] = [];
+  const claimed = new Set<string>();
+  for (const candidate of candidates) {
+    const key = await physical(candidate.root);
+    if (claimed.has(key)) continue;
+    claimed.add(key);
+    result.push(candidate);
+  }
+  return result;
+}
 
-async function discover(roots: Roots, profiles: ProfileRoot[], warnings: Set<string>, signal: AbortSignal): Promise<FileSource[]> {
+async function discover(roots: Roots, profiles: ProfileRoot[], omp: { id: string; root: string }[], warnings: Set<string>, signal: AbortSignal): Promise<FileSource[]> {
   const sources = new Map<string, FileSource>();
+  const add = async (path: string, provider: TranscriptProvider, providerId: string, nativeId: string, parentId: string | null, archived: boolean) => {
+    try {
+      const info = await stat(path);
+      const source: FileSource = { path, nativeId, provider, providerId, archived, parentId, kind: parentId ? "subagent" : "main", size: info.size, mtimeMs: info.mtimeMs };
+      const key = `${provider}:${nativeId}`;
+      const previous = sources.get(key);
+      // A copied/moved rollout in both trees is one session. Prefer the fullest copy.
+      if (!previous || previous.size < source.size || (previous.size === source.size && source.mtimeMs > previous.mtimeMs)) sources.set(key, source);
+      if (previous?.archived) sources.get(key)!.archived = true;
+      if (archived) sources.get(key)!.archived = true;
+    } catch { warnings.add("A transcript disappeared or could not be inspected during the scan."); }
+  };
   const trees: [string, "claude" | "codex", string, boolean][] = [];
   for (const profile of profiles) {
     if (profile.kind === "claude") trees.push([join(profile.root, "projects"), "claude", profile.id, false]);
@@ -187,16 +228,27 @@ async function discover(roots: Roots, profiles: ProfileRoot[], warnings: Set<str
           if (subagentIndex >= 1) parentId = segments[subagentIndex - 1];
           if (parentId) nativeId = `${parentId}/${nativeId}`;
         }
-        try {
-          const info = await stat(path);
-          const source: FileSource = { path, nativeId, provider, providerId, archived, parentId, kind: parentId ? "subagent" : "main", size: info.size, mtimeMs: info.mtimeMs };
-          const key = `${provider}:${nativeId}`;
-          const previous = sources.get(key);
-          // A copied/moved rollout in both trees is one session. Prefer the fullest copy.
-          if (!previous || previous.size < source.size || (previous.size === source.size && source.mtimeMs > previous.mtimeMs)) sources.set(key, source);
-          if (previous?.archived) sources.get(key)!.archived = true;
-          if (archived) sources.get(key)!.archived = true;
-        } catch { warnings.add("A transcript disappeared or could not be inspected during the scan."); }
+        await add(path, provider, providerId, nativeId, parentId, archived);
+      }
+    }
+  }
+  // Oh My Pi: `<root>/<cwd slug>/<timestamp>_<id>.jsonl`. A session's subagents are `<name>.jsonl` in its
+  // `<timestamp>_<id>/` directory, and their own subagents sit in `<name>/` beside them.
+  for (const { id: providerId, root } of omp) {
+    for (const project of await entries(root, warnings)) {
+      if (!project.isDirectory()) continue;
+      const queue: [string, string | null][] = [[join(root, project.name), null]];
+      while (queue.length) {
+        if (signal.aborted) throw new Error("Scan cancelled");
+        const [directory, parentId] = queue.pop()!;
+        for (const entry of await entries(directory, warnings)) {
+          const name = entry.name.replace(/\.jsonl$/, "");
+          const nativeId = parentId ? `${parentId}/${name}` : OMP_SESSION.exec(name)?.[1];
+          if (!nativeId) continue;
+          const path = join(directory, entry.name);
+          if (entry.isDirectory()) queue.push([path, nativeId]);
+          else if (entry.isFile() && entry.name.endsWith(".jsonl")) await add(path, "omp", providerId, nativeId, parentId, false);
+        }
       }
     }
   }
@@ -221,7 +273,8 @@ function joinSession(source: Source, parsed: ParsedTranscript, metadata: Metadat
   return {
     id: key, nativeId: source.nativeId, provider, providerLabel: label,
     kind: parentId || parsed.isSubagent ? "subagent" : source.kind, parentId: parentId ? `${provider}:${parentId}` : null,
-    title: agent?.title || parsed.title || `${label} ${source.nativeId.slice(-12)}`,
+    // Oh My Pi names subagent transcripts after the task, e.g. `SpecReview` or `__advisor`.
+    title: agent?.title || parsed.title || `${label} ${source.provider === "omp" ? source.nativeId.slice(source.nativeId.lastIndexOf("/") + 1) : source.nativeId.slice(-12)}`,
     agentId: agent?.id ?? null, workspaceId: workspace?.id ?? null, workspace: workspace?.title ?? "",
     projectId: project?.id ?? null, project: project?.name ?? "Outside Paseo / unknown project",
     cwd, branch: workspace?.branch || parsed.branch, labels: workspace?.labels ?? [],
@@ -232,7 +285,7 @@ function joinSession(source: Source, parsed: ParsedTranscript, metadata: Metadat
 }
 
 export function defaultRoots(): Roots {
-  return { paseo: paseoHome(), claude: process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), ".claude"), codex: process.env.CODEX_HOME ?? join(homedir(), ".codex"), data: process.env.XDG_DATA_HOME || join(homedir(), ".local", "share"), cursor: cursorRoots() };
+  return { paseo: paseoHome(), claude: process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), ".claude"), codex: process.env.CODEX_HOME ?? join(homedir(), ".codex"), omp: join(process.env.PI_CODING_AGENT_DIR || join(homedir(), process.env.PI_CONFIG_DIR || ".omp", "agent"), "sessions"), data: process.env.XDG_DATA_HOME || join(homedir(), ".local", "share"), cursor: cursorRoots() };
 }
 
 /**
@@ -293,9 +346,13 @@ export class UsageIndex {
     const warnings = new Set<string>();
     const metadata = await readMetadata(this.roots.paseo, warnings);
     const profiles = await profileRoots(this.roots, this.roots.profiles ?? metadata.profiles);
-    const sources = await discover(this.roots, profiles, warnings, this.controller.signal);
+    const omp = await ompRoots(this.roots.omp, metadata);
+    const sources = await discover(this.roots, profiles, omp, warnings, this.controller.signal);
     this.state = { ...this.state, total: sources.length };
     const sessions: Session[] = [];
+    // A fork copies its parent's subagent transcripts unchanged into its own directory. Each Oh My Pi
+    // session ID counts once, from its fullest copy, then the earliest path (the original parent's).
+    const ompCopies = new Map<string, { session: Session; source: FileSource }>();
     let next = 0;
     const livePaths = new Set(sources.map((s) => s.path));
     const worker = async () => {
@@ -310,7 +367,13 @@ export class UsageIndex {
             this.cache.set(source.path, entry);
             changes.files.set(source.path, entry);
           }
-          sessions.push(joinSession(source, entry.parsed, metadata));
+          const session = joinSession(source, entry.parsed, metadata);
+          const headerId = source.provider === "omp" ? entry.parsed.nativeId : "";
+          if (!headerId) sessions.push(session);
+          else {
+            const previous = ompCopies.get(headerId);
+            if (!previous || previous.source.size < source.size || (previous.source.size === source.size && source.path < previous.source.path)) ompCopies.set(headerId, { session, source });
+          }
         } catch {
           if (this.controller.signal.aborted) return;
           const session = joinSession(source, { nativeId: source.nativeId, parentId: source.parentId, cwd: "", title: "", branch: "", startedAt: null, endedAt: null, buckets: [], warnings: ["Transcript could not be read."] }, metadata);
@@ -322,7 +385,8 @@ export class UsageIndex {
     };
     await Promise.all(Array.from({ length: Math.min(4, sources.length) }, worker));
     if (this.controller.signal.aborted) throw new Error("Scan cancelled");
-    const readable = new Set(["claude", "codex", ...profiles.map((profile) => profile.id)]);
+    for (const { session } of ompCopies.values()) sessions.push(session);
+    const readable = new Set(["claude", "codex", ...profiles.map((profile) => profile.id), ...omp.map((root) => root.id)]);
     sessions.push(...await this.readStores(metadata, warnings, readable, changes));
     const seen = new Set(sessions.map((s) => s.id));
     for (const [key, agent] of metadata.agents) {

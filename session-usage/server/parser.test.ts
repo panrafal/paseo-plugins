@@ -8,7 +8,7 @@ import { normalizeUsage, parseTranscript, TranscriptParser, MAX_LINE_BYTES } fro
 
 const date = "2026-09-01T12:00:00.000Z";
 const usage = (input: number, cached = 0, output = 20, write = 0) => ({ input_tokens: input, cached_input_tokens: cached, cache_write_input_tokens: write, output_tokens: output, reasoning_output_tokens: 5, total_tokens: input + output });
-function parse(provider: "claude" | "codex", records: unknown[]) {
+function parse(provider: "claude" | "codex" | "omp", records: unknown[]) {
   const parser = new TranscriptParser(provider);
   for (const record of records) parser.accept(record);
   const result = parser.finish();
@@ -16,6 +16,45 @@ function parse(provider: "claude" | "codex", records: unknown[]) {
 }
 const codex = (type: string, payload: unknown, timestamp = date) => ({ type, timestamp, payload });
 const token = (u: unknown, timestamp = date) => codex("event_msg", { type: "token_count", info: { total_token_usage: u, last_token_usage: u } }, timestamp);
+
+test("Oh My Pi skips history a fork copied, counts side-model requests and measures turns to the reply that calls no tool", () => {
+  const at = (seconds: number) => new Date(Date.parse(date) + seconds * 1000).toISOString();
+  const message = (id: string, seconds: number, message: unknown) => ({ type: "message", id, parentId: null, timestamp: at(seconds), message });
+  const usage = { input: 100, output: 20, cacheRead: 300, cacheWrite: 50, reasoningTokens: 5, cttl: { ephemeral1h: 40 }, cost: { total: 0.5 } };
+  const assistant = (id: string, seconds: number, stopReason: string, content: unknown[]) => message(id, seconds, { role: "assistant", model: "claude-opus-5-5", usage, stopReason, completedAt: Date.parse(at(seconds + 1)), content });
+  const result = parse("omp", [
+    { type: "title", v: 1, title: "\uf41b FIX: Usage scan" },
+    { type: "session", version: 3, id: "s1", timestamp: at(0), cwd: "/worktree", title: "Old title", parentSession: "s0" },
+    message("copied", -600, { role: "assistant", model: "claude-opus-5-5", usage, stopReason: "stop", content: [{ type: "text", text: "copied" }] }),
+    { type: "model_change", id: "m", timestamp: at(1), model: "anthropic/claude-opus-5-5" },
+    { type: "thinking_level_change", id: "t", timestamp: at(1), thinkingLevel: "high" },
+    message("u1", 2, { role: "user", content: [{ type: "text", text: "hello" }] }),
+    assistant("a1", 3, "toolUse", [{ type: "thinking", thinking: "private" }, { type: "toolCall", id: "c1", name: "bash", arguments: { command: "ls" } }]),
+    message("r1", 5, { role: "toolResult", toolCallId: "c1", toolName: "bash", content: [{ type: "text", text: "boom" }], isError: true }),
+    message("injected", 6, { role: "user", synthetic: true, content: [{ type: "text", text: "<system-reminder/>" }] }),
+    assistant("a2", 7, "stop", [{ type: "text", text: "done" }]),
+    { type: "model_usage", id: "side", timestamp: at(9), model: "claude-haiku-5-5", usage: { input: 10, output: 2, cacheRead: 0, cacheWrite: 0, cost: { total: 0.01 } } },
+    { type: "compaction", id: "k", timestamp: at(10) },
+  ]);
+  assert.equal(result.title, "FIX: Usage scan");
+  assert.equal(result.cwd, "/worktree");
+  assert.equal(result.startedAt, at(0));
+  assert.deepEqual(result.buckets.map((b) => [b.model, b.effort, b.metrics.requests]), [["claude-haiku-5-5", null, 1], ["claude-opus-5-5", "high", 2]]);
+  const opus = result.buckets.find((b) => b.model === "claude-opus-5-5")!.metrics;
+  assert.equal(opus.inputTokens, 900);
+  assert.equal(opus.uncachedTokens, 200);
+  assert.equal(opus.cacheWrite1hTokens, 80);
+  assert.equal(opus.reasoningTokens, 10);
+  assert.equal(opus.reportedCostUsd, 1);
+  assert.ok(opus.estimatedCostUsd! > 0);
+  assert.equal(result.metrics.userMessages, 1);
+  assert.equal(result.metrics.userCharacters, 5);
+  assert.equal(result.metrics.assistantMessages, 2);
+  assert.equal(result.metrics.assistantCharacters, 4);
+  assert.deepEqual([result.metrics.toolCalls, result.metrics.toolErrors], [1, 1]);
+  assert.equal(result.metrics.compactions, 1);
+  assert.equal(result.metrics.activeMs, 6_000, "the turn runs from the user message to the final reply's completion");
+});
 
 test("Claude records effort per message without carrying it into messages that omit it", () => {
   const assistant = (id: string, effort?: unknown, output = 20) => ({

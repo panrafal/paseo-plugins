@@ -2,7 +2,7 @@
   "name": "session-usage",
   "private": true,
   "version": "0.1.0",
-  "description": "Agent session usage from local Claude, Codex, OpenCode, Kilo, Devin CLI and Cursor records: sortable stats, provider charts, cost estimates, and CSV export.",
+  "description": "Agent session usage from local Claude, Codex, Oh My Pi, OpenCode, Kilo, Devin CLI and Cursor records: sortable stats, provider charts, cost estimates, and CSV export.",
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test --test-isolation=none server/*.test.ts"

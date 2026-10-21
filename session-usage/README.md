@@ -1,7 +1,7 @@
 # session-usage
 
-Adds **Session usage** to Paseo's sidebar and Command Center. It reads Claude Code and Codex
-transcripts and the OpenCode, Kilo, Devin CLI, and Cursor session stores on the selected daemon, including
+Adds **Session usage** to Paseo's sidebar and Command Center. It reads Claude Code, Codex, and Oh My
+Pi transcripts and the OpenCode, Kilo, Devin CLI, and Cursor session stores on the selected daemon, including
 archived sessions, subagents, and sessions started outside Paseo, then joins them with Paseo's
 project, workspace, and agent records. Agents of other providers are listed from Paseo's records
 with unknown usage. Subscription allowance cards show how much of each provider's limits is used,
@@ -112,9 +112,9 @@ where the tokens went, and how long the allowance lasts at the current pace.
 
 **Token categories are normalized.** Claude's base input excludes cache reads/writes, so those
 categories are added to produce total input. Codex's input already includes them, so they are
-subtracted to obtain uncached input. OpenCode, Kilo, and Devin CLI record uncached input and cache
-reads/writes separately, like Claude; OpenCode and Kilo record reasoning outside output, so it is
-added to output. Cache writes include the 1-hour subset. Reasoning is a subset
+subtracted to obtain uncached input. OpenCode, Kilo, Devin CLI, and Oh My Pi record uncached input
+and cache reads/writes separately, like Claude; OpenCode and Kilo record reasoning outside output, so
+it is added to output. Cache writes include the 1-hour subset. Reasoning is a subset
 of output and is never added a second time to total tokens. Character counts use Unicode code
 points, exclude images, and are not estimates of token counts.
 
@@ -147,7 +147,8 @@ corresponding base model rate. Historical usage is valued at this price snapshot
 This is a **standard, short-context API equivalent**, not a bill or subscription allowance meter.
 It excludes priority/fast processing, long-context and regional premiums, tool fees, negotiated
 discounts, tax, and plan charges. It does not infer what you paid for Claude Pro/Max or ChatGPT.
-**Reported cost** is separate. OpenCode and Kilo record a USD cost per message; Claude transcripts
+**Reported cost** is separate. OpenCode and Kilo record a USD cost per message, and Oh My Pi one
+per model request, priced from its own model catalog even on subscription logins. Claude transcripts
 rarely contain the SDK's `result.total_cost_usd` events, and Codex, Devin CLI, and Cursor record none. The plugin contacts
 no pricing or provider account API. Subscription allowances come from Paseo, whose daemon queries
 the provider accounts.
@@ -158,6 +159,7 @@ the provider accounts.
 | --- | --- |
 | Claude | `<config dir>/projects/**/*.jsonl`, including nested `subagents` files, for every Claude configuration directory (see below); default `$CLAUDE_CONFIG_DIR` or `~/.claude` |
 | Codex | `<home>/sessions/**/rollout-*.jsonl` and `<home>/archived_sessions/**/rollout-*.jsonl` for every Codex home (see below); default `$CODEX_HOME` or `~/.codex` |
+| Oh My Pi | `<sessions>/*/<timestamp>_<id>.jsonl`, with subagent transcripts nested in the session's `<timestamp>_<id>/` directory; default `$PI_CODING_AGENT_DIR/sessions` or `~/.omp/agent/sessions` (`~/$PI_CONFIG_DIR/agent/sessions`), plus the directory of every session file an Oh My Pi agent recorded in Paseo |
 | OpenCode, Kilo | `$XDG_DATA_HOME/opencode/opencode.db` and `$XDG_DATA_HOME/kilo/kilo.db`, default `~/.local/share`; only the `session`, `message`, and `part` tables |
 | Devin CLI | `$XDG_DATA_HOME/devin/cli/sessions.db`, default `~/.local/share`; only the `sessions` and `message_nodes` tables |
 | Cursor | `$CURSOR_CONFIG_DIR/{acp-sessions/*,chats/*/*}/store.db`; without it, both `$XDG_CONFIG_HOME/cursor` (default `~/.config/cursor`) and `~/.cursor`; only the `meta` and `blobs` tables |
@@ -198,6 +200,15 @@ the provider accounts.
   (`cursor-grok-4.6-high-fast` is `cursor-grok-4.6-fast` at `high`). Tool errors use the recorded
   tool result's `error` or `failure` output. Stores without a root or messages are skipped unless a
   Paseo agent owns them.
+- Oh My Pi: one model response per assistant message with usage, plus side requests such as
+  memory, auto-thinking, and `find` calls under their own model. Forks, branches, and imports copy
+  earlier history into the new file with its original timestamps; entries older than the file's
+  session header are skipped, so copied requests count once, in the session that made them.
+  Injected (`synthetic`) user messages are not user messages. A turn runs from a user message to the
+  first reply that calls no tool, including aborted and failed replies. Tool errors use the tool
+  result's `isError`. Effort comes from thinking-level changes. Subagent transcripts (`SpecReview`,
+  `__advisor`, …) are subagents of the session whose directory holds them. Paseo providers that
+  extend `omp` are attributed by their agents' session files.
 - Agents of providers without readable local usage records are listed as missing with a notice.
 - A provider session referenced by several Paseo agents is counted once; an active agent record
   wins over an archived one. Duplicate active/archive Codex files use the largest copy, then the
@@ -212,8 +223,8 @@ the provider accounts.
   is empty; inaccessible or malformed metadata produces a visible scan warning.
 - Claude usage snapshots are merged per assistant message ID, using the highest reported value
   per token category to handle repeated content blocks/final updates. Tool calls use call IDs.
-- Effort comes from Claude assistant records, Codex turn contexts or applied thread settings, and
-  Devin CLI model names. OpenCode and Kilo record none.
+- Effort comes from Claude assistant records, Codex turn contexts or applied thread settings, Oh My
+  Pi thinking-level changes, and Devin CLI model names. OpenCode and Kilo record none.
   Changes split activity buckets without changing token totals. Missing effort stays unknown.
 - Modern Codex `token_usage_record` entries are deduplicated by response ID and are authoritative
   once present. Their lifetime counters differ from legacy `token_count` counters after compaction;
@@ -243,7 +254,7 @@ the provider accounts.
 
 ## Limitations
 
-- Measures Claude, Codex, OpenCode, Kilo, and Devin CLI from local records. Cursor sessions include
+- Measures Claude, Codex, Oh My Pi, OpenCode, Kilo, and Devin CLI from local records. Cursor sessions include
   messages, tool calls, and models but no token usage. Other providers appear only through Paseo's
   agent records, with unknown usage.
 - Cost figures are a standard short-context API equivalent from a fixed price table, not a bill
