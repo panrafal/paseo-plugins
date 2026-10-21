@@ -1,14 +1,16 @@
 # task-link
 
 Adds a composer pill when an agent's branch, title, or workspace name contains a task ID.
-Press the pill to open the configured link. Previously named `capitally-tasks`.
+Press the pill to open the configured link. Configure several links to get one pill per link
+that matches. Previously named `capitally-tasks`.
 
 ![Task link settings](./images/task-link-settings.png)
 
 ## Settings
 
 Open **Settings → Plugins → task-link → Task link**, or choose **Configure task link** in the
-Command Center. Requires a Paseo client with `addSettingsScreen`, `openSettings`, and
+Command Center. Each link has its own pattern, link, and optional label; **Add** appends a link
+and **Remove** deletes one. With no links, no pills appear. Requires a Paseo client with `addSettingsScreen`, `openSettings`, and
 `@getpaseo/plugin/client/ui` support. Paseo owns settings navigation, scrolling, mobile layout, and theme.
 
 - **Task regular expression**: a JavaScript pattern without `/` delimiters or flags. Matching is
@@ -17,7 +19,9 @@ Command Center. Requires a Paseo client with `addSettingsScreen`, `openSettings`
   the whole match is used. Matches with only empty/unmatched groups are skipped.
 - **Task link**: an HTTP(S) URL containing `{ID}`. Every `{ID}` is replaced with the URL-encoded
   captured text. Case and punctuation in the ID are preserved.
-- **Preview**: try a branch or title to inspect the extracted ID and destination before saving.
+- **Pill label** (optional): text shown on the pill instead of the task ID, such as `PR` or
+  `Notion {ID}`. Every `{ID}` is replaced with the raw captured text. Leave empty to show the ID.
+- **Preview**: try a branch or title to inspect each link's pill text and destination before saving.
 
 | Pattern | Input | Task ID |
 | --- | --- | --- |
@@ -29,18 +33,21 @@ Command Center. Requires a Paseo client with `addSettingsScreen`, `openSettings`
 For example, `https://tracker.example/tasks/{ID}` opens task `CT-1234` at
 `https://tracker.example/tasks/CT-1234`. A bracketed ID becomes `%5BCT-1234%5D`.
 
-Defaults match `\b([Cc][Tt]-\d+)\b` and open `https://www.notion.so/{ID}`. Unlike the old plugin,
+The default is one link that matches `\b([Cc][Tt]-\d+)\b` and opens `https://www.notion.so/{ID}`. Unlike the old plugin,
 IDs are no longer forced to uppercase.
 
 Settings use validated plugin RPCs and are saved atomically under
 `$PASEO_HOME/plugin-data/task-link/settings.json` (default Paseo home: `~/.paseo`). They are shared
-by clients of that daemon and survive plugin reloads. Saving updates this client's pills immediately;
+by clients of that daemon and survive plugin reloads. A `settings.json` from earlier versions,
+holding a single `pattern` and `urlTemplate`, loads as one link and is rewritten as
+`{ "links": [...] }` on the next save. Up to 20 links are allowed. Saving updates this client's pills immediately;
 other clients refresh within 15 seconds and also read the latest settings before opening a link.
 
 ## How it works
 
 Sources are checked in this order: branch, agent title, workspace title, workspace name.
-Within each source, matches are checked from left to right.
+Within each source, matches are checked from left to right. Each link resolves its task
+independently, and pills appear in the order of the links.
 
 - `shared/link.ts` extracts task IDs and builds links; `shared/settings.ts` validates settings.
 - `server/branch.ts` reads the checked-out branch with `git rev-parse --abbrev-ref HEAD`.

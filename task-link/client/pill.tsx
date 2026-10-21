@@ -3,7 +3,7 @@ import type { PaseoAgent, PaseoWorkspace } from "@getpaseo/client";
 import React from "react";
 import { Linking } from "react-native";
 import { getBranch } from "../shared/task";
-import { findTaskIn, taskUrl, type TaskLinkSettings } from "../shared/link";
+import { findTaskIn, taskLabel, taskUrl, type TaskLinkSettings } from "../shared/link";
 import { getTaskLinkSettings } from "../shared/settings";
 import { createSubscriptionKeeper, type SubscriptionKeeper } from "./directory-subscription";
 import { SettingsSurface } from "./settings";
@@ -21,16 +21,21 @@ type AgentState = {
   cwd: string;
   title: string | null;
   status: PaseoAgent["status"];
-  /** Task the current pill was registered for; `null` when there is no pill. */
-  task: string | null;
-  url: string | null;
-  removePill: (() => void) | null;
+  /** Registered pills by link index; empty where a link has no match. */
+  pills: Array<Pill | undefined>;
 };
+
+type Pill = { task: string; label: string; url: string; remove: () => void };
+
+/** The first link keeps the original pill ID. */
+function pillId(index: number): string {
+  return index === 0 ? "task-link" : `task-link-${index + 1}`;
+}
 
 type WorkspaceNames = { name: string; title: string | null };
 
 /**
- * One pill per agent whose branch, workspace name, or task title references a
+ * One pill per configured link per agent whose branch, workspace name, or task title references a
  * task. The client entry runs once per installation per connected
  * app, so this owns the whole set: it seeds from the agents and workspaces that
  * already exist, follows both update streams, refreshes the git branch on the
@@ -81,58 +86,61 @@ export function contributeClient(client: PluginClientContext) {
   void refreshSettings();
   const settingsTimer = setInterval(() => { void refreshSettings(); }, 15_000);
 
-  function resolveTask(state: AgentState): string | null {
-    if (!settings) return null;
-    const workspace = workspaces.get(state.workspaceId);
-    return findTaskIn(
-      settings.pattern,
-      branches.get(state.cwd),
-      state.title,
-      workspace?.title,
-      workspace?.name,
-    );
+  /** Removes the pills of links at `from` and beyond. */
+  function dropPills(state: AgentState, from = 0) {
+    for (const pill of state.pills.slice(from)) pill?.remove();
+    state.pills.length = Math.min(state.pills.length, from);
   }
 
-  function dropPill(state: AgentState) {
-    state.removePill?.();
-    state.removePill = null;
-    state.task = null;
-    state.url = null;
-  }
-
-  /** Re-registers when the task, URL, or workspace changes. */
+  /** Re-registers each link's pill when its task, label, or URL changes. */
   function sync(agentId: string) {
     const state = agents.get(agentId);
-    if (!state || stopped) return;
-    const task = resolveTask(state);
-    const url = task && settings ? taskUrl(task, settings.urlTemplate) : null;
-    if (task === state.task && url === state.url) return;
-    dropPill(state);
-    if (!task || !url) return;
-    const { workspaceId } = state;
-    state.task = task;
-    state.url = url;
+    if (!state || stopped || !settings) return;
+    const workspace = workspaces.get(state.workspaceId);
+    const texts = [branches.get(state.cwd), state.title, workspace?.title, workspace?.name];
+    const { links } = settings;
+    dropPills(state, links.length);
+    links.forEach((link, index) => {
+      const task = findTaskIn(link.pattern, ...texts);
+      const label = task ? taskLabel(task, link.label) : null;
+      const url = task ? taskUrl(task, link.urlTemplate) : null;
+      const previous = state.pills[index];
+      if (previous?.task === task && previous.label === label && previous.url === url) return;
+      previous?.remove();
+      state.pills[index] = task && label && url
+        ? addPill(agentId, state.workspaceId, index, { task, label, url })
+        : undefined;
+    });
+  }
+
+  function addPill(
+    agentId: string,
+    workspaceId: string,
+    index: number,
+    pill: Omit<Pill, "remove">,
+  ): Pill {
+    const { task, label } = pill;
     const registration = client.addComposerPill({
-      id: "task-link",
+      id: pillId(index),
       workspaceId,
       agentId,
       button: {
-        title: `Open task ${task}`,
+        title: label === task ? `Open task ${task}` : `Open ${label} (task ${task})`,
         icon: "SquareKanban",
-        label: task,
+        label,
         behavior: {
           kind: "action",
           async onPress() {
             // Read on press as well so another client's save cannot open a stale link.
             const next = await client.rpc(getTaskLinkSettings, {});
             applySettings(next);
-            const current = agents.get(agentId);
-            if (!stopped && current?.url) await openExternalUrl(current.url);
+            const current = agents.get(agentId)?.pills[index];
+            if (!stopped && current) await openExternalUrl(current.url);
           },
         },
       },
     });
-    state.removePill = () => registration.remove();
+    return { ...pill, remove: () => registration.remove() };
   }
 
   function syncDirectory(directory: string) {
@@ -169,7 +177,7 @@ export function contributeClient(client: PluginClientContext) {
   function remove(agentId: string) {
     const state = agents.get(agentId);
     if (!state) return;
-    dropPill(state);
+    dropPills(state);
     agents.delete(agentId);
   }
 
@@ -184,13 +192,11 @@ export function contributeClient(client: PluginClientContext) {
       cwd: agent.cwd,
       title: agent.title ?? null,
       status: agent.status,
-      task: previous?.task ?? null,
-      url: previous?.url ?? null,
-      removePill: previous?.removePill ?? null,
+      pills: previous?.pills ?? [],
     };
     agents.set(agent.id, state);
-    // The pill belongs to a workspace track, so a moved agent needs a new one.
-    if (previous && previous.workspaceId !== agent.workspaceId) dropPill(state);
+    // Pills belong to a workspace track, so a moved agent needs new ones.
+    if (previous && previous.workspaceId !== agent.workspaceId) dropPills(state);
 
     // A finished turn may have switched branches, and a new directory has no
     // cached branch yet. Anything else is a status blip that cannot change git.

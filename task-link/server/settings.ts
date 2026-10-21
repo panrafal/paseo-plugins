@@ -4,7 +4,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import {
   DEFAULT_TASK_LINK_SETTINGS,
-  TaskLinkSettingsSchema,
+  StoredTaskLinkSettingsSchema,
   type TaskLinkSettings,
 } from "../shared/settings";
 
@@ -14,7 +14,7 @@ function settingsDirectory(): string {
 
 export async function readTaskLinkSettings(): Promise<TaskLinkSettings> {
   try {
-    return TaskLinkSettingsSchema.parse(
+    return StoredTaskLinkSettingsSchema.parse(
       JSON.parse(await readFile(join(settingsDirectory(), "settings.json"), "utf8")),
     );
   } catch (error) {
@@ -24,7 +24,7 @@ export async function readTaskLinkSettings(): Promise<TaskLinkSettings> {
 }
 
 export async function writeTaskLinkSettings(settings: TaskLinkSettings): Promise<TaskLinkSettings> {
-  const normalized = TaskLinkSettingsSchema.parse(settings);
+  const normalized = StoredTaskLinkSettingsSchema.parse(settings);
   const directory = settingsDirectory();
   await mkdir(directory, { recursive: true, mode: 0o700 });
   const temporary = join(directory, `settings.${randomUUID()}.tmp`);

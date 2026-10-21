@@ -1,9 +1,18 @@
-export const DEFAULT_TASK_LINK_SETTINGS = {
+export type TaskLinkRule = {
+  pattern: string;
+  urlTemplate: string;
+  /** Shown on the pill instead of the task ID; `{ID}` is replaced with the ID. */
+  label?: string;
+};
+
+export type TaskLinkSettings = { links: TaskLinkRule[] };
+
+export const DEFAULT_TASK_LINK_RULE: TaskLinkRule = {
   pattern: "\\b([Cc][Tt]-\\d+)\\b",
   urlTemplate: "https://www.notion.so/{ID}",
 };
 
-export type TaskLinkSettings = typeof DEFAULT_TASK_LINK_SETTINGS;
+export const DEFAULT_TASK_LINK_SETTINGS: TaskLinkSettings = { links: [DEFAULT_TASK_LINK_RULE] };
 
 /** Capture groups take precedence; use the full match only if there are no groups. */
 export function findTask(text: string | null | undefined, pattern: string): string | null {
@@ -30,4 +39,10 @@ export function findTaskIn(
 
 export function taskUrl(task: string, urlTemplate: string): string {
   return urlTemplate.replaceAll("{ID}", encodeURIComponent(task));
+}
+
+/** The pill text: the label with `{ID}` substituted, or the task ID when no label is set. */
+export function taskLabel(task: string, label: string | undefined): string {
+  const trimmed = label?.trim();
+  return trimmed ? trimmed.replaceAll("{ID}", task) : task;
 }

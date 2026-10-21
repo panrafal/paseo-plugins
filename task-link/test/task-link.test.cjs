@@ -37,8 +37,11 @@ function loadSource(entry, { modules = {}, globals = {} } = {}) {
   return load(path.resolve(__dirname, '..', entry));
 }
 
-const { findTask, findTaskIn, taskUrl, DEFAULT_TASK_LINK_SETTINGS } = loadSource('shared/link.ts');
-const { TaskLinkSettingsSchema } = loadSource('shared/settings.ts');
+const { findTask, findTaskIn, taskLabel, taskUrl, DEFAULT_TASK_LINK_RULE, DEFAULT_TASK_LINK_SETTINGS } = loadSource('shared/link.ts');
+const { TaskLinkSettingsSchema, StoredTaskLinkSettingsSchema } = loadSource('shared/settings.ts');
+const one = (link) => ({ links: [link] });
+// Sandboxed modules build objects with another realm's prototypes.
+const plain = (value) => JSON.parse(JSON.stringify(value));
 
 test('extracts the first non-empty capture, including alternative subexpressions', () => {
   const alternatives = String.raw`(\[CT-\d+\])|-(ct-\d+)`;
@@ -54,7 +57,7 @@ test('extracts the first non-empty capture, including alternative subexpressions
   assert.equal(findTask(null, '(CT)'), null);
   assert.equal(findTask('CT-42', String.raw`CT-\d+`), 'CT-42');
   assert.equal(findTask('ct-42', String.raw`CT-\d+`), null);
-  assert.equal(findTask('ct-42', DEFAULT_TASK_LINK_SETTINGS.pattern), 'ct-42');
+  assert.equal(findTask('ct-42', DEFAULT_TASK_LINK_RULE.pattern), 'ct-42');
 });
 
 test('keeps source priority and escapes every ID substitution', () => {
@@ -63,16 +66,30 @@ test('keeps source priority and escapes every ID substitution', () => {
   assert.equal(findTaskIn(pattern, undefined, 'title CT-2', 'workspace CT-3'), 'CT-2');
   assert.equal(taskUrl('[CT-42]', 'https://example.com/{ID}?task={ID}'), 'https://example.com/%5BCT-42%5D?task=%5BCT-42%5D');
   assert.equal(taskUrl('a/b ?#&$&', 'https://example.com/{ID}'), 'https://example.com/a%2Fb%20%3F%23%26%24%26');
+  assert.equal(taskLabel('CT-1', undefined), 'CT-1');
+  assert.equal(taskLabel('CT-1', '  '), 'CT-1');
+  assert.equal(taskLabel('CT-1', 'PR'), 'PR');
+  assert.equal(taskLabel('[CT-1]', 'Notion {ID}'), 'Notion [CT-1]');
 });
 
 test('validates regex and HTTP(S) templates before saving', () => {
   assert.equal(TaskLinkSettingsSchema.safeParse(DEFAULT_TASK_LINK_SETTINGS).success, true);
+  assert.equal(TaskLinkSettingsSchema.safeParse({ links: [] }).success, true);
   for (const pattern of ['', '(', '[', 'a{2,1}']) {
-    assert.equal(TaskLinkSettingsSchema.safeParse({ ...DEFAULT_TASK_LINK_SETTINGS, pattern }).success, false);
+    assert.equal(TaskLinkSettingsSchema.safeParse(one({ ...DEFAULT_TASK_LINK_RULE, pattern })).success, false);
   }
   for (const urlTemplate of ['https://example.com/no-placeholder', 'javascript:{ID}', 'file:///{ID}', 'not a url {ID}']) {
-    assert.equal(TaskLinkSettingsSchema.safeParse({ ...DEFAULT_TASK_LINK_SETTINGS, urlTemplate }).success, false);
+    assert.equal(TaskLinkSettingsSchema.safeParse(one({ ...DEFAULT_TASK_LINK_RULE, urlTemplate })).success, false);
   }
+  assert.equal(TaskLinkSettingsSchema.safeParse(one({ ...DEFAULT_TASK_LINK_RULE, label: 'x'.repeat(201) })).success, false);
+  assert.equal(TaskLinkSettingsSchema.safeParse({ links: Array(21).fill(DEFAULT_TASK_LINK_RULE) }).success, false);
+});
+
+test('reads the legacy single-link shape as one link', () => {
+  const legacy = { pattern: '(TASK-1)', urlTemplate: 'https://example.com/{ID}' };
+  assert.deepEqual(plain(StoredTaskLinkSettingsSchema.parse(legacy)), { links: [legacy] });
+  assert.deepEqual(plain(StoredTaskLinkSettingsSchema.parse(one(legacy))), { links: [legacy] });
+  assert.equal(StoredTaskLinkSettingsSchema.safeParse({ ...legacy, pattern: '(' }).success, false);
 });
 
 test('persists validated settings atomically and keeps invalid existing data', async () => {
@@ -81,13 +98,19 @@ test('persists validated settings atomically and keeps invalid existing data', a
     const { readTaskLinkSettings, writeTaskLinkSettings } = loadSource('server/settings.ts', {
       globals: { process: { env: { PASEO_HOME: directory } } },
     });
-    assert.equal((await readTaskLinkSettings()).urlTemplate, DEFAULT_TASK_LINK_SETTINGS.urlTemplate);
-    const settings = { pattern: '(TASK-123)', urlTemplate: 'https://example.com/{ID}' };
-    await writeTaskLinkSettings(settings);
-    assert.equal((await readTaskLinkSettings()).pattern, settings.pattern);
+    assert.deepEqual(plain(await readTaskLinkSettings()), plain(DEFAULT_TASK_LINK_SETTINGS));
     const file = path.join(directory, 'plugin-data/task-link/settings.json');
+    const legacy = { pattern: '(TASK-123)', urlTemplate: 'https://example.com/{ID}' };
+    await writeTaskLinkSettings(legacy);
+    assert.deepEqual(JSON.parse(await readFile(file, 'utf8')), one(legacy), 'legacy input is saved in the new shape');
+    const settings = { links: [legacy, { pattern: '(PR-\\d+)', urlTemplate: 'https://example.com/pr/{ID}', label: 'PR' }] };
+    await writeTaskLinkSettings(settings);
+    assert.deepEqual(plain(await readTaskLinkSettings()), settings);
     const saved = await readFile(file, 'utf8');
-    await assert.rejects(writeTaskLinkSettings({ ...settings, pattern: '(' }));
+    await writeFile(file, JSON.stringify(legacy));
+    assert.deepEqual(plain(await readTaskLinkSettings()), one(legacy), 'legacy files still load');
+    await writeFile(file, saved);
+    await assert.rejects(writeTaskLinkSettings(one({ ...legacy, pattern: '(' })));
     assert.equal(await readFile(file, 'utf8'), saved);
     await writeFile(file, '{bad json');
     await assert.rejects(readTaskLinkSettings());
@@ -124,32 +147,32 @@ test('updates pills on settings changes, opens current links, and removes regist
       },
     },
     rpc: async (contract) => contract.name === 'task-link.branch' ? { branch: 'feature/CT-1' } : savedSettings,
-    addComposerPill: (pill) => { pills.set(pill.agentId, pill); return () => pills.delete(pill.agentId); },
+    addComposerPill: (pill) => { pills.set(`${pill.agentId}/${pill.id}`, pill); return { remove: () => pills.delete(`${pill.agentId}/${pill.id}`) }; },
     addSettingsScreen: (value) => { screen = value; return () => { removedScreens++; }; },
     addCommandCenterItem: (value) => { command = value; return () => { removedScreens++; }; },
   };
   const cleanup = contributeClient(client);
   await settle();
   assert.equal(pills.size, 1);
-  assert.equal(pills.get('a1').title, 'Open task CT-1');
+  assert.equal(pills.get('a1/task-link').button.title, 'Open task CT-1');
   let openedScreen;
   command.onSelect({ openSettings: (id) => { openedScreen = id; } });
   assert.equal(openedScreen, screen.id);
   const applySettings = screen.Component({}).props.onSaved;
-  savedSettings = { ...savedSettings, urlTemplate: 'https://example.com/{ID}' };
+  savedSettings = one({ ...DEFAULT_TASK_LINK_RULE, urlTemplate: 'https://example.com/{ID}' });
   applySettings(savedSettings);
-  await pills.get('a1').onPress();
+  await pills.get('a1/task-link').button.behavior.onPress();
   assert.equal(opened.pop(), 'https://example.com/CT-1');
-  savedSettings = { pattern: '(CT-2)', urlTemplate: 'https://other.example/{ID}' };
-  await pills.get('a1').onPress();
+  savedSettings = one({ pattern: '(CT-2)', urlTemplate: 'https://other.example/{ID}' });
+  await pills.get('a1/task-link').button.behavior.onPress();
   assert.equal(opened.pop(), 'https://other.example/CT-2');
-  assert.equal(pills.get('a1').title, 'Open task CT-2');
-  savedSettings = { ...savedSettings, pattern: '(OTHER-\\d+)' };
+  assert.equal(pills.get('a1/task-link').button.title, 'Open task CT-2');
+  savedSettings = one({ ...savedSettings.links[0], pattern: '(OTHER-\\d+)' });
   poll();
   await settle();
   assert.equal(pills.size, 0);
   onAgent({ kind: 'upsert', agent: { ...agent, title: 'OTHER-5' } });
-  assert.equal(pills.get('a1').title, 'Open task OTHER-5');
+  assert.equal(pills.get('a1/task-link').button.title, 'Open task OTHER-5');
   onAgent({ kind: 'upsert', agent: { ...agent, title: 'OTHER-5', archivedAt: 'now' } });
   assert.equal(pills.size, 0);
   onAgent({ kind: 'upsert', agent: { ...agent, title: 'OTHER-6' } });
@@ -158,13 +181,31 @@ test('updates pills on settings changes, opens current links, and removes regist
   let finishStaleRead;
   client.rpc = () => new Promise((resolve) => { finishStaleRead = resolve; });
   poll();
-  applySettings({ ...savedSettings, pattern: '(NEVER-MATCH)' });
+  applySettings(one({ ...savedSettings.links[0], pattern: '(NEVER-MATCH)' }));
   finishStaleRead(savedSettings);
   await settle();
   assert.equal(pills.size, 0, 'an older read cannot undo a local save');
   client.rpc = originalRpc;
   applySettings(savedSettings);
   assert.equal(pills.size, 1);
+  applySettings({ links: [
+    savedSettings.links[0],
+    { pattern: '(OTHER-\\d+)', urlTemplate: 'https://second.example/{ID}', label: 'Second {ID}' },
+    { pattern: '(NEVER)', urlTemplate: 'https://third.example/{ID}' },
+  ] });
+  assert.equal(pills.size, 2, 'each matching link gets its own pill');
+  const second = pills.get('a1/task-link-2');
+  assert.equal(second.button.label, 'Second OTHER-6');
+  assert.equal(second.button.title, 'Open Second OTHER-6 (task OTHER-6)');
+  assert.equal(pills.get('a1/task-link').button.label, 'OTHER-6');
+  savedSettings = { links: [savedSettings.links[0], { pattern: '(OTHER-\\d+)', urlTemplate: 'https://second.example/{ID}', label: 'Second {ID}' }] };
+  await second.button.behavior.onPress();
+  assert.equal(opened.pop(), 'https://second.example/OTHER-6');
+  assert.equal(pills.get('a1/task-link-2'), second, 'an unchanged link keeps its registration');
+  applySettings(savedSettings);
+  applySettings(one(savedSettings.links[0]));
+  assert.deepEqual(plain([...pills.keys()]), ['a1/task-link']);
+  applySettings(savedSettings);
   poll();
   cleanup();
   await settle();

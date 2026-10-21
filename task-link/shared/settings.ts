@@ -1,7 +1,7 @@
 import { defineRpc } from "@getpaseo/plugin";
 import { z } from "zod";
 
-export { DEFAULT_TASK_LINK_SETTINGS, type TaskLinkSettings } from "./link";
+export { DEFAULT_TASK_LINK_SETTINGS, type TaskLinkRule, type TaskLinkSettings } from "./link";
 
 export const TaskPatternSchema = z.string().min(1, "Enter a regular expression.")
   .max(2_048, "The regular expression is too long.")
@@ -19,10 +19,23 @@ export const UrlTemplateSchema = z.string().trim().min(1, "Enter a link.")
     } catch { return false; }
   }, "Enter a valid HTTP or HTTPS link.");
 
-export const TaskLinkSettingsSchema = z.object({
+export const LabelSchema = z.string().trim().max(200, "The label is too long.");
+
+export const TaskLinkRuleSchema = z.object({
   pattern: TaskPatternSchema,
   urlTemplate: UrlTemplateSchema,
+  label: LabelSchema.optional(),
 });
+
+export const TaskLinkSettingsSchema = z.object({
+  links: z.array(TaskLinkRuleSchema).max(20, "Use at most 20 links."),
+});
+
+/** Also accepts the single-link `{ pattern, urlTemplate }` shape saved by earlier versions. */
+export const StoredTaskLinkSettingsSchema = z.union([
+  TaskLinkSettingsSchema,
+  TaskLinkRuleSchema.transform((link) => ({ links: [link] })),
+]);
 
 export const getTaskLinkSettings = defineRpc({
   name: "task-link.settings.get",
@@ -32,6 +45,6 @@ export const getTaskLinkSettings = defineRpc({
 
 export const setTaskLinkSettings = defineRpc({
   name: "task-link.settings.set",
-  input: TaskLinkSettingsSchema,
+  input: StoredTaskLinkSettingsSchema,
   output: TaskLinkSettingsSchema,
 });
