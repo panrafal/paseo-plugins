@@ -164,6 +164,8 @@ searches those files directly:
 
 ## Install
 
+Requires Paseo 0.11.4 or newer.
+
 ```bash
 paseo plugin add panrafal/paseo-plugins:agents-history
 ```

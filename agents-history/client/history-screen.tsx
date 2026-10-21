@@ -1,5 +1,5 @@
 import type { PluginTheme } from "@getpaseo/plugin";
-import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
+import type { PluginScreenProps } from "@getpaseo/plugin/client";
 import { Icon } from "@getpaseo/plugin/client/react-native";
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -41,7 +41,7 @@ import { isSearchable, useHistorySearch } from "./use-search";
 import { WorkspaceCard } from "./workspace-card";
 
 /**
- * The sidebar surface: every workspace the daemon has ever had, archived ones included, with
+ * The history screen: every workspace the daemon has ever had, archived ones included, with
  * its agents, newest activity first. Filters apply locally; the search text matches names and
  * titles at once and, after a short pause, asks the plugin's server entry on the daemon host to
  * rank the agents' conversations (or grep them in regex mode). During a ranked search the best
@@ -57,7 +57,7 @@ const GROUP_ICONS: Record<Group, string> = { active: "FolderOpen", archived: "Ar
 
 /**
  * The search text, filter choices, and folded groups survive navigating away and back (the
- * surface unmounts each time), so opening a found workspace and returning shows the same
+ * screen unmounts each time), so opening a found workspace and returning shows the same
  * results. They reset with the app session: plugins have no client storage of their own.
  */
 const persisted: { filters: HistoryFilters; collapsed: Set<Group> } = {
@@ -71,7 +71,7 @@ function errorMessage(cause: unknown): string {
   return text && text !== "undefined" ? text : "Could not load the history.";
 }
 
-export function HistorySurface({ theme, host, layout, navigation }: PluginSurfaceProps) {
+export function HistoryScreen({ theme, host, layout, navigation }: PluginScreenProps) {
   const scheme = useMemo(() => themeScheme(theme), [theme]);
   const styles = useMemo(() => createStyles(theme, layout.compact), [theme, layout.compact]);
 
