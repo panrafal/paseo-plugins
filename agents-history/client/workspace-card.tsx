@@ -1,5 +1,5 @@
 import type { PluginTheme } from "@getpaseo/plugin";
-import { type PluginSurfaceProps, useRpc } from "@getpaseo/plugin/client";
+import { type PluginScreenProps, useRpc } from "@getpaseo/plugin/client";
 import { Icon, Modal, useToast } from "@getpaseo/plugin/client/react-native";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { memo, useCallback, useMemo, useRef, useState } from "react";
@@ -36,7 +36,7 @@ import {
  * on disk says so.
  */
 
-export type CardNavigation = PluginSurfaceProps["navigation"];
+export type CardNavigation = PluginScreenProps["navigation"];
 
 export interface WorkspaceCardProps {
   row: HistoryWorkspace;
