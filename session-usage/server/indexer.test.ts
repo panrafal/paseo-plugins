@@ -13,7 +13,7 @@ async function save(path: string, content: string) { await mkdir(dirname(path), 
 
 test("index joins archived metadata, deduplicates copies, keeps missing agents and refreshes changed files", async () => {
   const root = await mkdtemp(join(tmpdir(), "session-usage-index-"));
-  const roots = { paseo: join(root, "paseo"), claude: join(root, "claude"), codex: join(root, "codex"), data: join(root, "data"), cursor: [join(root, "cursor")] };
+  const roots = { paseo: join(root, "paseo"), claude: join(root, "claude"), codex: join(root, "codex"), omp: join(root, "omp"), data: join(root, "data"), cursor: [join(root, "cursor")] };
   const index = new UsageIndex(roots);
   try {
     await save(join(roots.paseo, "projects", "projects.json"), JSON.stringify([{ projectId: "p", rootPath: "/project", customName: "Project", archivedAt: "2026-09-01" }]));
@@ -65,7 +65,7 @@ test("index joins archived metadata, deduplicates copies, keeps missing agents a
 
 test("SQLite stores add OpenCode-family, Devin and Cursor sessions, resolve custom provider IDs and label every provider", async () => {
   const root = await mkdtemp(join(tmpdir(), "session-usage-stores-"));
-  const roots = { paseo: join(root, "paseo"), claude: join(root, "claude"), codex: join(root, "codex"), data: join(root, "data"), cursor: [join(root, "cursor")] };
+  const roots = { paseo: join(root, "paseo"), claude: join(root, "claude"), codex: join(root, "codex"), omp: join(root, "omp"), data: join(root, "data"), cursor: [join(root, "cursor")] };
   const index = new UsageIndex(roots);
   const T0 = Date.parse("2026-09-10T12:00:00Z");
   try {
@@ -200,7 +200,7 @@ test("SQLite stores add OpenCode-family, Devin and Cursor sessions, resolve cust
 
 test("unavailable provider directories produce an empty completed scan without mutating the host", async () => {
   const root = await mkdtemp(join(tmpdir(), "session-usage-empty-"));
-  const index = new UsageIndex({ paseo: join(root, "paseo"), claude: join(root, "claude"), codex: join(root, "codex"), data: join(root, "data"), cursor: [join(root, "cursor")] });
+  const index = new UsageIndex({ paseo: join(root, "paseo"), claude: join(root, "claude"), codex: join(root, "codex"), omp: join(root, "omp"), data: join(root, "data"), cursor: [join(root, "cursor")] });
   try {
     index.snapshot();
     const snapshot = await index.settled();
@@ -212,7 +212,7 @@ test("unavailable provider directories produce an empty completed scan without m
 
 test("the persistent index serves unchanged sources after a restart and follows changes and deletions", async () => {
   const root = await mkdtemp(join(tmpdir(), "session-usage-persist-"));
-  const roots = { paseo: join(root, "paseo"), claude: join(root, "claude"), codex: join(root, "codex"), data: join(root, "data"), cursor: [join(root, "cursor")] };
+  const roots = { paseo: join(root, "paseo"), claude: join(root, "claude"), codex: join(root, "codex"), omp: join(root, "omp"), data: join(root, "data"), cursor: [join(root, "cursor")] };
   const database = join(root, "index", "usage.sqlite");
   const claudePath = join(roots.claude, "projects", "-worktree", "c1.jsonl");
   const record = (input: number) => JSON.stringify({ type: "assistant", uuid: "r1", timestamp: "2026-09-01T12:00:00Z", sessionId: "c1", message: { id: "r1", model: "claude-fable-5", content: [{ type: "text", text: "PRIVATE_TRANSCRIPT_TEXT" }], usage: { input_tokens: input, output_tokens: 5 } } }) + "\n";
@@ -267,7 +267,7 @@ test("an index from another version is rebuilt", async () => {
 
 test("snapshots carry a content revision and omit sessions the caller already has", async () => {
   const root = await mkdtemp(join(tmpdir(), "session-usage-revision-"));
-  const roots = { paseo: join(root, "paseo"), claude: join(root, "claude"), codex: join(root, "codex"), data: join(root, "data"), cursor: [join(root, "cursor")] };
+  const roots = { paseo: join(root, "paseo"), claude: join(root, "claude"), codex: join(root, "codex"), omp: join(root, "omp"), data: join(root, "data"), cursor: [join(root, "cursor")] };
   const claudePath = join(roots.claude, "projects", "-worktree", "c1.jsonl");
   const record = (id: string) => JSON.stringify({ type: "assistant", uuid: id, timestamp: "2026-09-01T12:00:00Z", sessionId: "c1", message: { id, model: "claude-fable-5", content: [], usage: { input_tokens: 1, output_tokens: 1 } } }) + "\n";
   const scan = async (index: UsageIndex) => { index.snapshot(true); return index.settled(); };
@@ -297,7 +297,7 @@ test("snapshots carry a content revision and omit sessions the caller already ha
 
 test("provider profiles from Paseo config add every CLAUDE_CONFIG_DIR and CODEX_HOME and attribute sessions to that provider", async () => {
   const root = await mkdtemp(join(tmpdir(), "session-usage-profiles-"));
-  const roots = { paseo: join(root, "paseo"), claude: join(root, "claude"), codex: join(root, "codex"), data: join(root, "data"), cursor: [join(root, "cursor")] };
+  const roots = { paseo: join(root, "paseo"), claude: join(root, "claude"), codex: join(root, "codex"), omp: join(root, "omp"), data: join(root, "data"), cursor: [join(root, "cursor")] };
   const index = new UsageIndex(roots);
   try {
     await save(join(roots.paseo, "config.json"), JSON.stringify({ agents: { providers: {
@@ -326,5 +326,50 @@ test("provider profiles from Paseo config add every CLAUDE_CONFIG_DIR and CODEX_
     assert.equal(byId.get("codex:base")?.providerLabel, "Codex", "an unclaimed default directory keeps the base provider");
     assert.equal(snapshot.sessions.length, 4);
     assert.ok(!JSON.stringify(snapshot).includes("SECRET_MUST_NOT_LEAK"));
+  } finally { index.dispose(); await rm(root, { recursive: true, force: true }); }
+});
+
+test("Oh My Pi sessions link to Paseo agents, nest subagents under their parent, count forked subagent copies once and follow agents into other session directories", async () => {
+  const root = await mkdtemp(join(tmpdir(), "session-usage-omp-"));
+  const roots = { paseo: join(root, "paseo"), claude: join(root, "claude"), codex: join(root, "codex"), omp: join(root, "omp", "sessions"), data: join(root, "data"), cursor: [join(root, "cursor")] };
+  const index = new UsageIndex(roots);
+  try {
+    await save(join(roots.paseo, "config.json"), JSON.stringify({ agents: { providers: { "omp-work": { extends: "omp", label: "OMP Work" } } } }));
+    const transcript = (id: string) => [
+      { type: "session", version: 3, id, timestamp: "2026-10-01T12:00:00.000Z", cwd: "/worktree" },
+      { type: "message", id: "a", timestamp: "2026-10-01T12:00:01.000Z", message: { role: "assistant", model: "claude-opus-5-5", stopReason: "stop", content: [{ type: "text", text: "PRIVATE_TRANSCRIPT_TEXT" }], usage: { input: 10, output: 5, cacheRead: 0, cacheWrite: 0 } } },
+    ].map((r) => JSON.stringify(r) + "\n").join("");
+    const session = (sessions: string, id: string) => join(sessions, "-worktree", `2026-10-01T12-00-00-000Z_${id}.jsonl`);
+    const main = session(roots.omp, "s1");
+    await save(main, transcript("s1"));
+    await save(join(main.slice(0, -6), "Review.jsonl"), transcript("child"));
+    await save(join(main.slice(0, -6), "Review", "__advisor.jsonl"), transcript("grandchild"));
+    // A fork copies the parent's subagent transcripts, header and all, into its own directory.
+    const fork = join(roots.omp, "-worktree", "2026-10-02T12-00-00-000Z_s2.jsonl");
+    await save(fork, transcript("s2").replace("2026-10-01T12:00:00.000Z", "2026-10-02T12:00:00.000Z"));
+    await save(join(fork.slice(0, -6), "Review.jsonl"), transcript("child"));
+    await save(join(fork.slice(0, -6), "Review", "__advisor.jsonl"), transcript("grandchild"));
+    const work = session(join(root, "work", "sessions"), "w1");
+    await save(work, transcript("w1"));
+    const agent = (id: string, provider: string, sessionId: string, nativeHandle: string) => save(join(roots.paseo, "agents", "bucket", `${id}.json`), JSON.stringify({ id, provider, cwd: "/worktree", title: id, createdAt: "2026-10-01", persistence: { sessionId, nativeHandle } }));
+    // Early agents recorded the session file as their session ID.
+    await agent("main-agent", "omp", main, main);
+    await agent("work-agent", "omp-work", "w1", work);
+
+    index.snapshot(true);
+    const snapshot = await index.settled();
+    SnapshotSchema.parse(snapshot);
+    const byId = new Map(snapshot.sessions.map((s) => [s.id, s]));
+    assert.equal(snapshot.sessions.length, 5);
+    assert.ok(!byId.has("omp:s2/Review") && !byId.has("omp:s2/Review/__advisor"), "copied subagents count once, under the original parent");
+    assert.equal(byId.get("omp:s1")?.agentId, "main-agent");
+    assert.equal(byId.get("omp:s1")?.providerLabel, "Oh My Pi");
+    assert.equal(byId.get("omp:s1/Review")?.parentId, "omp:s1");
+    assert.equal(byId.get("omp:s1/Review/__advisor")?.parentId, "omp:s1/Review");
+    assert.equal(byId.get("omp:s1/Review/__advisor")?.kind, "subagent");
+    assert.equal(byId.get("omp-work:w1")?.agentId, "work-agent");
+    assert.equal(byId.get("omp-work:w1")?.providerLabel, "OMP Work");
+    assert.equal(filterSessions(snapshot.sessions, EMPTY_FILTERS).find((r) => r.session.id === "omp:s1")?.metrics.inputTokens, 10);
+    assert.ok(!JSON.stringify(snapshot).includes("PRIVATE_TRANSCRIPT_TEXT"));
   } finally { index.dispose(); await rm(root, { recursive: true, force: true }); }
 });
