@@ -56,13 +56,23 @@ const GROUP_LABELS: Record<Group, string> = { active: "Active", archived: "Archi
 const GROUP_ICONS: Record<Group, string> = { active: "FolderOpen", archived: "Archive" };
 
 /**
- * The search text, filter choices, and folded groups survive navigating away and back (the
+ * Cards rendered per group (or in the ungrouped list) before a "Show more" button; each press
+ * adds another page. Rendering every card of a long history at once stalls the surface.
+ */
+const PAGE_SIZE = 50;
+/** `all` is the ungrouped list shown while ranking or filtering by archived state. */
+type ListKey = Group | "all";
+const INITIAL_LIMITS: Record<ListKey, number> = { active: PAGE_SIZE, archived: PAGE_SIZE, all: PAGE_SIZE };
+
+/**
+ * The search text, filter choices, folded groups, and pages shown survive navigating away and back (the
  * surface unmounts each time), so opening a found workspace and returning shows the same
  * results. They reset with the app session: plugins have no client storage of their own.
  */
-const persisted: { filters: HistoryFilters; collapsed: Set<Group> } = {
+const persisted: { filters: HistoryFilters; collapsed: Set<Group>; limits: Record<ListKey, number> } = {
   filters: EMPTY_FILTERS,
   collapsed: new Set(),
+  limits: INITIAL_LIMITS,
 };
 
 function errorMessage(cause: unknown): string {
@@ -76,9 +86,20 @@ export function HistorySurface({ theme, host, layout, navigation }: PluginSurfac
   const styles = useMemo(() => createStyles(theme, layout.compact), [theme, layout.compact]);
 
   const [filters, setFilters] = useState<HistoryFilters>(() => persisted.filters);
+  const [limits, setLimits] = useState<Record<ListKey, number>>(() => persisted.limits);
   const changeFilters = useCallback((next: HistoryFilters) => {
     persisted.filters = next;
     setFilters(next);
+    // A new selection starts again from the first page.
+    persisted.limits = INITIAL_LIMITS;
+    setLimits(INITIAL_LIMITS);
+  }, []);
+  const showMore = useCallback((key: ListKey) => {
+    setLimits((current) => {
+      const next = { ...current, [key]: current[key] + PAGE_SIZE };
+      persisted.limits = next;
+      return next;
+    });
   }, []);
   const [collapsedVersion, setCollapsedVersion] = useState(0);
   const toggleGroup = useCallback((group: Group) => {
@@ -336,12 +357,30 @@ export function HistorySurface({ theme, host, layout, navigation }: PluginSurfac
                   theme={theme}
                   styles={styles}
                 >
-                  {items.map(renderCard)}
+                  {items.slice(0, limits[group]).map(renderCard)}
+                  <ShowMoreButton
+                    listKey={group}
+                    shown={Math.min(items.length, limits[group])}
+                    total={items.length}
+                    onPress={showMore}
+                    theme={theme}
+                    styles={styles}
+                  />
                 </GroupSection>
               );
             })
           ) : (
-            visible.map(renderCard)
+            <>
+              {visible.slice(0, limits.all).map(renderCard)}
+              <ShowMoreButton
+                listKey="all"
+                shown={Math.min(visible.length, limits.all)}
+                total={visible.length}
+                onPress={showMore}
+                theme={theme}
+                styles={styles}
+              />
+            </>
           )}
         </ScrollView>
       )}
@@ -395,6 +434,49 @@ function GroupSection({
       </Pressable>
       {expanded ? <View style={styles.groupRows}>{children}</View> : null}
     </View>
+  );
+}
+
+/** Reveals the next page of a list; renders nothing once every card is shown. */
+function ShowMoreButton({
+  listKey,
+  shown,
+  total,
+  onPress,
+  theme,
+  styles,
+}: {
+  listKey: ListKey;
+  shown: number;
+  total: number;
+  onPress(key: ListKey): void;
+  theme: PluginTheme;
+  styles: SurfaceStyles;
+}) {
+  const [hovered, setHovered] = useState(false);
+  if (shown >= total) return null;
+  const next = Math.min(PAGE_SIZE, total - shown);
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Show ${pluralize(next, "more workspace")}, ${shown} of ${total} shown`}
+      onHoverIn={() => setHovered(true)}
+      onHoverOut={() => setHovered(false)}
+      onPress={() => onPress(listKey)}
+      style={({ pressed }) => [
+        styles.showMore,
+        hovered ? styles.showMoreHovered : null,
+        pressed ? styles.retryPressed : null,
+      ]}
+    >
+      <Icon name="ChevronDown" size={14} color={theme.colors.foregroundMuted} />
+      <Text style={styles.showMoreText} numberOfLines={1}>
+        {`Show ${next} more`}
+      </Text>
+      <Text style={styles.showMoreCount} numberOfLines={1}>
+        {`${shown} of ${total}`}
+      </Text>
+    </Pressable>
   );
 }
 
@@ -482,6 +564,23 @@ function createStyles(theme: PluginTheme, compact: boolean) {
     },
     groupCount: { color: theme.colors.foregroundMuted, fontSize: 12, fontWeight: "600" },
     groupRows: { gap: compact ? 8 : 10 },
+
+    showMore: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 8,
+      minHeight: 40,
+      paddingVertical: 8,
+      paddingHorizontal: 12,
+      borderRadius: 10,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: theme.colors.border,
+      backgroundColor: theme.colors.surface1,
+    },
+    showMoreHovered: { borderColor: theme.colors.foregroundMuted },
+    showMoreText: { color: theme.colors.foreground, fontSize: 13, fontWeight: "600" },
+    showMoreCount: { color: theme.colors.foregroundMuted, fontSize: 12 },
 
     centered: {
       flex: 1,

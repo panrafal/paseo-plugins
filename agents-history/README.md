@@ -14,7 +14,9 @@ for finding the workspace where something was discussed weeks ago.
 ## What is listed
 
 Every workspace in the daemon's registry, newest activity first, grouped into **Active** and
-**Archived** when the archived filter is set to all. Each card carries:
+**Archived** when the archived filter is set to all. Each group (or the single list while ranking
+or filtering by archived state) shows its first 50 workspaces; **Show more** adds the next 50.
+Changing a filter or the search starts again from the first 50. Each card carries:
 
 1. **Head** — the workspace title (its name when it has no title), an amber `archived` badge
    when the workspace or its project is archived, and how long ago anything in it last moved.
