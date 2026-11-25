@@ -2,9 +2,11 @@ import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import type { PaseoApi } from "@getpaseo/client";
+import type { PluginHandlerContext } from "@getpaseo/plugin/server";
 import { z } from "zod";
 import { paseoHome } from "./paseo-home";
+
+type PaseoApi = PluginHandlerContext["paseo"];
 
 const runFile = promisify(execFile);
 const pending = new Map<string, Promise<void>>();
